@@ -50,6 +50,25 @@ function App() {
         }
       }
     }
+
+    // Sync from Supabase in background
+    const syncCloud = async () => {
+      const synced = await db.syncFromSupabase();
+      if (synced) {
+        const session = sessionStorage.getItem('umiya_active_user');
+        if (session) {
+          const parsed = JSON.parse(session);
+          const usersList = db.getUsers();
+          const dbUser = usersList.find(u => u.id === parsed.id);
+          if (dbUser) {
+            setCurrentUser(dbUser);
+            sessionStorage.setItem('umiya_active_user', JSON.stringify(dbUser));
+          }
+        }
+      }
+    };
+
+    syncCloud();
   }, []);
 
   // Update default view based on user role

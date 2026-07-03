@@ -1,5 +1,5 @@
 // Multi-Tenant Database & LocalStorage Management for Umiya SaaS
-import { isSupabaseConfigured } from './supabase';
+import { isSupabaseConfigured, supabase } from './supabase';
 
 export interface User {
   id: string; // matches shop_id
@@ -92,7 +92,7 @@ const SEED_USERS: User[] = [
   {
     id: 'admin',
     email: 'admin@umiya.com',
-    password_hash: 'adminpassword', // In production, use standard crypto-pbkdf2 or Auth helper
+    password_hash: 'adminpassword',
     shop_name: 'Umiya Super Admin Panel',
     owner_name: 'Super Admin',
     mobile: '9999999999',
@@ -100,7 +100,7 @@ const SEED_USERS: User[] = [
     role: 'SuperAdmin',
     plan_type: 'Yearly',
     plan_start: new Date().toISOString(),
-    plan_expiry: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
+    plan_expiry: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
     status: 'Active'
   },
   {
@@ -114,9 +114,8 @@ const SEED_USERS: User[] = [
     role: 'ShopOwner',
     plan_type: 'Monthly',
     plan_start: new Date().toISOString(),
-    plan_expiry: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(), // 1 year active
-    status: 'Active',
-    gst_number: '24UMIYA1234F1Z1'
+    plan_expiry: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // active for 1 year
+    status: 'Active'
   },
   {
     id: 'shop-2',
@@ -125,13 +124,12 @@ const SEED_USERS: User[] = [
     shop_name: 'Expired Trial Mukhwas',
     owner_name: 'Ketan Shah',
     mobile: '9001002003',
-    address: 'Kalupur Market, Ahmedabad',
+    address: 'Kalupur Market, Ahmedabad, Gujarat',
     role: 'ShopOwner',
     plan_type: 'Trial',
-    plan_start: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString(), // started 10 days ago
-    plan_expiry: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString(), // expired 3 days ago
-    status: 'Active',
-    gst_number: '24EXPIRED5678X9X'
+    plan_start: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(), // 15 days ago
+    plan_expiry: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), // expired 1 day ago
+    status: 'Active'
   },
   {
     id: 'shop-3',
@@ -140,29 +138,27 @@ const SEED_USERS: User[] = [
     shop_name: 'Blocked Pan Masala Agency',
     owner_name: 'Hitesh Thakkar',
     mobile: '9428500000',
-    address: 'Ring Road, Surat',
+    address: 'Mehsana Bypass, Gujarat',
     role: 'ShopOwner',
     plan_type: 'Yearly',
     plan_start: new Date().toISOString(),
-    plan_expiry: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
-    status: 'Blocked',
-    gst_number: '24BLOCKED0000C1Z1'
+    plan_expiry: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+    status: 'Blocked'
   }
 ];
 
-// Seed initial products tagged with 'shop-1' (the active test owner)
 const DEFAULT_PRODUCTS: Product[] = [
   {
     id: 'prod-1',
     shop_id: 'shop-1',
     product_name: 'Vimal Shaheed Pan Masala',
-    product_name_gu: 'વિમલ પાન મસાલા',
+    product_name_gu: 'વિમલ શહીદ પાન મસાલા',
     category: 'Pan Masala',
     brand: 'Vimal',
     purchase_price: 120,
     selling_price: 140,
-    stock_quantity: 180,
-    unit: 'Box',
+    stock_quantity: 80,
+    unit: 'Packet',
     minimum_stock: 30,
     barcode: '8901234567890'
   },
@@ -172,26 +168,26 @@ const DEFAULT_PRODUCTS: Product[] = [
     product_name: 'Rajnigandha Pan Masala',
     product_name_gu: 'રજનીગંધા પાન મસાલા',
     category: 'Pan Masala',
-    brand: 'Dharampal Satyapal',
+    brand: 'Rajnigandha',
     purchase_price: 350,
     selling_price: 390,
     stock_quantity: 45,
-    unit: 'Box',
+    unit: 'Packet',
     minimum_stock: 15,
     barcode: '8901234567891'
   },
   {
     id: 'prod-3',
     shop_id: 'shop-1',
-    product_name: 'Tulsi Mix Mukhwas',
-    product_name_gu: 'તુલસી મિક્સ મુખવાસ',
+    product_name: 'Umiya Special Mukhwas',
+    product_name_gu: 'ઉમિયા સ્પેશિયલ મુખવાસ',
     category: 'Mukhwas',
-    brand: 'Tulsi',
-    purchase_price: 45,
-    selling_price: 60,
-    stock_quantity: 15,
-    unit: 'Packet',
-    minimum_stock: 30,
+    brand: 'Umiya Home',
+    purchase_price: 180,
+    selling_price: 240,
+    stock_quantity: 12,
+    unit: 'Box',
+    minimum_stock: 15,
     barcode: '8901234567892'
   },
   {
@@ -293,7 +289,7 @@ const getSeedSales = (): Sale[] => {
     {
       id: 'sale-2',
       shop_id: 'shop-1',
-      sale_date: `${dates[0]}T12:00:00Z`, // Today
+      sale_date: `${dates[0]}T12:00:00Z`,
       product_id: 'prod-2',
       product_name: 'Rajnigandha Pan Masala',
       quantity: 5,
@@ -323,7 +319,6 @@ export const initializeDB = () => {
     localStorage.setItem(KEYS.SALES, JSON.stringify(getSeedSales()));
   }
   if (!localStorage.getItem(KEYS.AUDIT_LOGS)) {
-    // Seed initial login audit log
     localStorage.setItem(KEYS.AUDIT_LOGS, JSON.stringify([
       {
         id: 'log-1',
@@ -353,12 +348,28 @@ export const db = {
       users.push(user);
     }
     localStorage.setItem(KEYS.USERS, JSON.stringify(users));
+
+    // Supabase Sync (Background)
+    if (supabase) {
+      supabase.from('users').upsert(user).then(({ error }) => {
+        if (error) console.error('Supabase saveUser error:', error);
+      });
+    }
+
     return users;
   },
 
   deleteUser: (id: string): User[] => {
     const users = db.getUsers().filter(u => u.id !== id);
     localStorage.setItem(KEYS.USERS, JSON.stringify(users));
+
+    // Supabase Sync (Background)
+    if (supabase) {
+      supabase.from('users').delete().eq('id', id).then(({ error }) => {
+        if (error) console.error('Supabase deleteUser error:', error);
+      });
+    }
+
     return users;
   },
 
@@ -377,8 +388,15 @@ export const db = {
       action,
       shop_id
     };
-    logs.unshift(newLog); // Newest first
+    logs.unshift(newLog);
     localStorage.setItem(KEYS.AUDIT_LOGS, JSON.stringify(logs));
+
+    // Supabase Sync (Background)
+    if (supabase) {
+      supabase.from('audit_logs').insert(newLog).then(({ error }) => {
+        if (error) console.error('Supabase addAuditLog error:', error);
+      });
+    }
   },
 
   // PRODUCTS (Filtered by tenant)
@@ -402,6 +420,14 @@ export const db = {
       db.addAuditLog(product.shop_id, `Product Added: ${product.product_name}`, shop_id);
     }
     localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(allProducts));
+
+    // Supabase Sync (Background)
+    if (supabase) {
+      supabase.from('products').upsert(productPayload).then(({ error }) => {
+        if (error) console.error('Supabase saveProduct error:', error);
+      });
+    }
+
     return allProducts.filter(p => p.shop_id === shop_id);
   },
 
@@ -414,6 +440,14 @@ export const db = {
     }
     const filtered = allProducts.filter(p => !(p.id === id && p.shop_id === shop_id));
     localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(filtered));
+
+    // Supabase Sync (Background)
+    if (supabase) {
+      supabase.from('products').delete().eq('id', id).eq('shop_id', shop_id).then(({ error }) => {
+        if (error) console.error('Supabase deleteProduct error:', error);
+      });
+    }
+
     return filtered.filter(p => p.shop_id === shop_id);
   },
 
@@ -436,6 +470,14 @@ export const db = {
       allSuppliers.push(supplierPayload);
     }
     localStorage.setItem(KEYS.SUPPLIERS, JSON.stringify(allSuppliers));
+
+    // Supabase Sync (Background)
+    if (supabase) {
+      supabase.from('suppliers').upsert(supplierPayload).then(({ error }) => {
+        if (error) console.error('Supabase saveSupplier error:', error);
+      });
+    }
+
     return allSuppliers.filter(s => s.shop_id === shop_id);
   },
 
@@ -444,6 +486,14 @@ export const db = {
     const allSuppliers: Supplier[] = JSON.parse(localStorage.getItem(KEYS.SUPPLIERS) || '[]');
     const filtered = allSuppliers.filter(s => !(s.id === id && s.shop_id === shop_id));
     localStorage.setItem(KEYS.SUPPLIERS, JSON.stringify(filtered));
+
+    // Supabase Sync (Background)
+    if (supabase) {
+      supabase.from('suppliers').delete().eq('id', id).eq('shop_id', shop_id).then(({ error }) => {
+        if (error) console.error('Supabase deleteSupplier error:', error);
+      });
+    }
+
     return filtered.filter(s => s.shop_id === shop_id);
   },
 
@@ -464,6 +514,13 @@ export const db = {
     };
     allPurchases.unshift(newPurchase);
     localStorage.setItem(KEYS.PURCHASES, JSON.stringify(allPurchases));
+
+    // Supabase Sync (Background)
+    if (supabase) {
+      supabase.from('purchases').insert(newPurchase).then(({ error }) => {
+        if (error) console.error('Supabase addPurchase error:', error);
+      });
+    }
 
     // Increment Stock
     const shopProducts = db.getProducts(shop_id);
@@ -514,6 +571,13 @@ export const db = {
     allSales.unshift(newSale);
     localStorage.setItem(KEYS.SALES, JSON.stringify(allSales));
 
+    // Supabase Sync (Background)
+    if (supabase) {
+      supabase.from('sales').insert(newSale).then(({ error }) => {
+        if (error) console.error('Supabase addSale error:', error);
+      });
+    }
+
     // Deduct stock
     prod.stock_quantity -= sale.quantity;
     db.saveProduct(prod, shop_id);
@@ -522,7 +586,7 @@ export const db = {
     return newSale;
   },
 
-  // Supabase connection
+  // Supabase connection config
   getSupabaseConfig: () => {
     const config = localStorage.getItem(KEYS.SUPABASE_CONFIG);
     return config ? JSON.parse(config) : { url: '', key: '' };
@@ -530,5 +594,91 @@ export const db = {
 
   saveSupabaseConfig: (url: string, key: string) => {
     localStorage.setItem(KEYS.SUPABASE_CONFIG, JSON.stringify({ url, key }));
+  },
+
+  // Synchronize all tables from Supabase to LocalStorage
+  syncFromSupabase: async (): Promise<boolean> => {
+    if (!supabase) return false;
+    try {
+      console.log('Starting Supabase sync...');
+      
+      // Fetch users first to see if database has been initialized
+      const { data: users, error: uErr } = await supabase.from('users').select('*');
+      if (uErr) throw uErr;
+
+      // If remote database is completely empty, it means this is a newly connected Supabase project.
+      // We should push our current LocalStorage (seed data + updates) to the cloud!
+      if (!users || users.length === 0) {
+        console.log('Supabase project is empty. Pushing current LocalStorage to the cloud...');
+        
+        const localUsers = db.getUsers();
+        if (localUsers.length > 0) {
+          const { error } = await supabase.from('users').insert(localUsers);
+          if (error) console.error('Sync push users error:', error);
+        }
+
+        const localProducts = JSON.parse(localStorage.getItem(KEYS.PRODUCTS) || '[]');
+        if (localProducts.length > 0) {
+          const { error } = await supabase.from('products').insert(localProducts);
+          if (error) console.error('Sync push products error:', error);
+        }
+
+        const localSuppliers = JSON.parse(localStorage.getItem(KEYS.SUPPLIERS) || '[]');
+        if (localSuppliers.length > 0) {
+          const { error } = await supabase.from('suppliers').insert(localSuppliers);
+          if (error) console.error('Sync push suppliers error:', error);
+        }
+
+        const localPurchases = JSON.parse(localStorage.getItem(KEYS.PURCHASES) || '[]');
+        if (localPurchases.length > 0) {
+          const { error } = await supabase.from('purchases').insert(localPurchases);
+          if (error) console.error('Sync push purchases error:', error);
+        }
+
+        const localSales = JSON.parse(localStorage.getItem(KEYS.SALES) || '[]');
+        if (localSales.length > 0) {
+          const { error } = await supabase.from('sales').insert(localSales);
+          if (error) console.error('Sync push sales error:', error);
+        }
+
+        const localLogs = db.getAuditLogs();
+        if (localLogs.length > 0) {
+          const { error } = await supabase.from('audit_logs').insert(localLogs);
+          if (error) console.error('Sync push audit_logs error:', error);
+        }
+        
+        console.log('Sync push finished!');
+        return true;
+      }
+
+      // If remote database has data, pull it down to sync our local device storage
+      localStorage.setItem(KEYS.USERS, JSON.stringify(users));
+
+      const { data: products, error: pErr } = await supabase.from('products').select('*');
+      if (pErr) throw pErr;
+      if (products) localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(products));
+
+      const { data: suppliers, error: sErr } = await supabase.from('suppliers').select('*');
+      if (sErr) throw sErr;
+      if (suppliers) localStorage.setItem(KEYS.SUPPLIERS, JSON.stringify(suppliers));
+
+      const { data: purchases, error: purErr } = await supabase.from('purchases').select('*');
+      if (purErr) throw purErr;
+      if (purchases) localStorage.setItem(KEYS.PURCHASES, JSON.stringify(purchases));
+
+      const { data: sales, error: saleErr } = await supabase.from('sales').select('*');
+      if (saleErr) throw saleErr;
+      if (sales) localStorage.setItem(KEYS.SALES, JSON.stringify(sales));
+
+      const { data: logs, error: lErr } = await supabase.from('audit_logs').select('*');
+      if (lErr) throw lErr;
+      if (logs) localStorage.setItem(KEYS.AUDIT_LOGS, JSON.stringify(logs));
+
+      console.log('Supabase sync completed successfully!');
+      return true;
+    } catch (err) {
+      console.error('Error syncing from Supabase:', err);
+      return false;
+    }
   }
 };

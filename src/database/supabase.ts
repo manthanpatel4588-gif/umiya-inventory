@@ -1,8 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
-import { db } from './db';
 
-// Retrieve saved configuration from local storage
-const config = db.getSupabaseConfig();
+// Read directly from LocalStorage to prevent circular dependency with db.ts
+const getSupabaseConfig = () => {
+  const config = localStorage.getItem('umiya_supabase_config');
+  return config ? JSON.parse(config) : { url: '', key: '' };
+};
+
+const config = getSupabaseConfig();
 
 export const isSupabaseConfigured = (): boolean => {
   return !!(config.url && config.key);
