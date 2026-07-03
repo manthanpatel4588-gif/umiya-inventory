@@ -9,17 +9,19 @@ import {
   AlertTriangle,
   X,
   CheckCircle,
-  Barcode
+  Barcode,
+  Lock
 } from 'lucide-react';
-import { Product, db } from '../database/db';
+import { Product, db, User } from '../database/db';
 import { LanguageMode, t } from '../utils/translations';
 
 interface ProductManagerProps {
   langMode: LanguageMode;
+  currentUser: User;
 }
 
-export const ProductManager: React.FC<ProductManagerProps> = ({ langMode }) => {
-  const [products, setProducts] = useState<Product[]>(() => db.getProducts());
+export const ProductManager: React.FC<ProductManagerProps> = ({ langMode, currentUser }) => {
+  const [products, setProducts] = useState<Product[]>(() => db.getProducts(currentUser.id));
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -38,10 +40,13 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode }) => {
   const [formBarcode, setFormBarcode] = useState('');
   const [formError, setFormError] = useState('');
 
-  // Categories list
+  // Subscription Expiry Check
+  const isExpired = useMemo(() => {
+    return new Date(currentUser.plan_expiry) < new Date();
+  }, [currentUser.plan_expiry]);
+
   const categories = ['Pan Masala', 'Mukhwas', 'Chocolate', 'Cigarettes', 'General FMCG'];
 
-  // Filtered Products
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
       const matchesSearch = 
@@ -57,6 +62,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode }) => {
   }, [products, searchQuery, selectedCategory]);
 
   const handleOpenAddModal = () => {
+    if (isExpired) return; // Guard
     setEditingProduct(null);
     setFormName('');
     setFormNameGu('');
@@ -73,6 +79,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode }) => {
   };
 
   const handleOpenEditModal = (product: Product) => {
+    if (isExpired) return; // Guard
     setEditingProduct(product);
     setFormName(product.product_name);
     setFormNameGu(product.product_name_gu);
@@ -90,9 +97,9 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode }) => {
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isExpired) return; // Guard
     setFormError('');
 
-    // Basic validation
     if (!formName.trim()) {
       setFormError(langMode === 'gu' ? 'કૃપા કરીને ઉત્પાદનનું નામ દાખલ કરો' : 'Please enter English product name');
       return;
@@ -116,7 +123,6 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode }) => {
       return;
     }
     if (selling < purchase) {
-      // Wholesalers sometimes sell at cost, but warn or validate
       if (!confirm(langMode === 'gu' ? 'વેચાણ કિંમત ખરીદી કિંમત કરતા ઓછી છે. ચાલુ રાખવું છે?' : 'Selling price is less than purchase price. Continue?')) {
         return;
       }
@@ -132,6 +138,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode }) => {
 
     const payload: Product = {
       id: editingProduct ? editingProduct.id : `prod-${Date.now()}`,
+      shop_id: currentUser.id,
       product_name: formName.trim(),
       product_name_gu: formNameGu.trim(),
       category: formCategory,
@@ -144,24 +151,24 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode }) => {
       barcode: formBarcode.trim() || undefined
     };
 
-    const updated = db.saveProduct(payload);
+    const updated = db.saveProduct(payload, currentUser.id);
     setProducts(updated);
     setIsModalOpen(false);
   };
 
   const handleDelete = (id: string, name: string) => {
+    if (isExpired) return; // Guard
     const confirmation = confirm(
       langMode === 'gu' 
         ? `શું તમે ખરેખર "${name}" કાઢી નાખવા માંગો છો?` 
         : `Are you sure you want to delete "${name}"?`
     );
     if (confirmation) {
-      const updated = db.deleteProduct(id);
+      const updated = db.deleteProduct(id, currentUser.id);
       setProducts(updated);
     }
   };
 
-  // EXPORT EXCEL (Excel Compatible CSV Export with BOM)
   const handleExport = () => {
     const headers = [
       'Product ID', 
@@ -194,12 +201,11 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode }) => {
       ...rows.map(r => r.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))
     ].join('\n');
 
-    // Prepend UTF-8 BOM so MS Excel decodes Gujarati characters correctly
     const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `Umiya_Inventory_Products_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `Umiya_Products_${currentUser.shop_name.replace(/\s+/g, '_')}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -219,21 +225,30 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode }) => {
               : 'Manage your wholesale product master list, prices, barcodes, and current stock.'}
           </p>
         </div>
+        
         <div className="flex gap-2">
           <button 
             onClick={handleExport}
-            className="flex items-center gap-1.5 border border-slate-200 hover:bg-slate-50 text-slate-600 text-sm font-semibold px-4 py-2.5 rounded-xl transition-all shadow-sm"
+            className="flex items-center gap-1.5 border border-slate-200 hover:bg-slate-50 text-slate-650 text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm"
           >
             <Download className="w-4 h-4" />
             <span>{t('exportExcel', langMode)}</span>
           </button>
-          <button 
-            onClick={handleOpenAddModal}
-            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-100 hover:shadow-emerald-200"
-          >
-            <Plus className="w-4 h-4" />
-            <span>{t('addProduct', langMode)}</span>
-          </button>
+          
+          {!isExpired ? (
+            <button 
+              onClick={handleOpenAddModal}
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md"
+            >
+              <Plus className="w-4 h-4" />
+              <span>{t('addProduct', langMode)}</span>
+            </button>
+          ) : (
+            <div className="flex items-center gap-1.5 bg-slate-100 border border-slate-200 text-slate-400 text-xs font-bold px-4 py-2.5 rounded-xl cursor-not-allowed select-none shadow-sm">
+              <Lock className="w-3.5 h-3.5" />
+              <span>{t('addProduct', langMode)} (Locked)</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -266,7 +281,6 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode }) => {
           </select>
         </div>
 
-        {/* Inventory Summary info */}
         <div className="flex items-center justify-center bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-xs text-slate-500 font-semibold uppercase tracking-wider">
           {langMode === 'gu' ? `પરિણામો: ${filteredProducts.length} ઉત્પાદનો` : `Results: ${filteredProducts.length} Products`}
         </div>
@@ -277,7 +291,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode }) => {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50/70 border-b border-slate-100 text-xs font-bold text-slate-400 uppercase tracking-wider">
+              <tr className="bg-slate-50 border-b border-slate-100 text-xs font-bold text-slate-400 uppercase tracking-wider">
                 <th className="px-6 py-4">{langMode === 'gu' ? 'ઉત્પાદન નામ' : 'Product Name'}</th>
                 <th className="px-6 py-4">{t('category', langMode)}</th>
                 <th className="px-6 py-4">{t('brand', langMode)}</th>
@@ -291,10 +305,10 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode }) => {
             <tbody className="divide-y divide-slate-100 text-sm text-slate-600">
               {filteredProducts.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
+                  <td colSpan={8} className="px-6 py-12 text-center text-slate-400 font-medium">
                     {langMode === 'gu' 
-                      ? 'કોઈ ઉત્પાદનો મળ્યા નથી. નવું ઉત્પાદન ઉમેરવા માટે "+ ઉમેરો" પર ક્લિક કરો.' 
-                      : 'No products found matching criteria. Click "+ Add Product" to create one.'}
+                      ? 'કોઈ ઉત્પાદનો મળ્યા નથી.' 
+                      : 'No products found matching criteria.'}
                   </td>
                 </tr>
               ) : (
@@ -342,7 +356,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode }) => {
                       <td className="px-6 py-4">
                         {p.barcode ? (
                           <div className="flex items-center gap-1 text-xs text-slate-400 bg-slate-50 p-1.5 rounded-lg border border-slate-100 w-fit">
-                            <Barcode className="w-3.5 h-3.5 text-slate-400" />
+                            <Barcode className="w-3.5 h-3.5" />
                             <span>{p.barcode}</span>
                           </div>
                         ) : (
@@ -351,18 +365,27 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode }) => {
                       </td>
                       <td className="px-6 py-4 text-center">
                         <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={() => handleOpenEditModal(p)}
-                            className="p-1.5 bg-slate-50 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 border border-slate-100 rounded-lg transition-colors"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(p.id, p.product_name)}
-                            className="p-1.5 bg-slate-50 text-slate-400 hover:text-red-600 hover:bg-red-50 border border-slate-100 rounded-lg transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {!isExpired ? (
+                            <>
+                              <button
+                                onClick={() => handleOpenEditModal(p)}
+                                className="p-1.5 bg-slate-50 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 border border-slate-100 rounded-lg transition-colors"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(p.id, p.product_name)}
+                                className="p-1.5 bg-slate-50 text-slate-400 hover:text-red-600 hover:bg-red-50 border border-slate-100 rounded-lg transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-slate-300 flex items-center gap-0.5 text-[10px] font-bold">
+                              <Lock className="w-3 h-3" />
+                              <span>Locked</span>
+                            </span>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -374,11 +397,10 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode }) => {
         </div>
       </div>
 
-      {/* ADD / EDIT MODAL DIALOG */}
+      {/* ADD / EDIT MODAL */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg border border-slate-100 overflow-hidden transform transition-all">
-            {/* Header */}
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <h3 className="font-bold text-slate-800 flex items-center gap-2">
                 <span className="p-1.5 bg-emerald-100 text-emerald-700 rounded-lg">
@@ -396,7 +418,6 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode }) => {
               </button>
             </div>
 
-            {/* Form */}
             <form onSubmit={handleSave} className="p-6 space-y-4">
               {formError && (
                 <div className="p-3 bg-red-50 border border-red-200 text-xs font-bold text-red-700 rounded-xl flex items-center gap-2">
@@ -406,43 +427,32 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode }) => {
               )}
 
               <div className="grid grid-cols-2 gap-4">
-                {/* English Name */}
                 <div className="col-span-2 space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">
-                    Product Name (English)
-                  </label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">Product Name (English)</label>
                   <input
                     type="text"
                     value={formName}
                     onChange={(e) => setFormName(e.target.value)}
-                    placeholder="e.g. Vimal Shaheed Box"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500"
                   />
                 </div>
 
-                {/* Gujarati Name */}
                 <div className="col-span-2 space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">
-                    ઉત્પાદન નામ (ગુજરાતી)
-                  </label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">ઉત્પાદન નામ (ગુજરાતી)</label>
                   <input
                     type="text"
                     value={formNameGu}
                     onChange={(e) => setFormNameGu(e.target.value)}
-                    placeholder="દા.ત. વિમલ પાન મસાલા બોક્સ"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500"
                   />
                 </div>
 
-                {/* Category Selector */}
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">
-                    {t('category', langMode)}
-                  </label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{t('category', langMode)}</label>
                   <select
                     value={formCategory}
                     onChange={(e) => setFormCategory(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none"
                   >
                     {categories.map((c, idx) => (
                       <option key={idx} value={c}>{c}</option>
@@ -450,81 +460,55 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode }) => {
                   </select>
                 </div>
 
-                {/* Brand */}
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">
-                    {t('brand', langMode)}
-                  </label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{t('brand', langMode)}</label>
                   <input
                     type="text"
                     value={formBrand}
                     onChange={(e) => setFormBrand(e.target.value)}
-                    placeholder="e.g. ITC / Vimal"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none"
                   />
                 </div>
 
-                {/* Purchase Price */}
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">
-                    {t('purchasePrice', langMode)} (₹)
-                  </label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{t('purchasePrice', langMode)} (₹)</label>
                   <input
                     type="number"
                     step="0.01"
                     value={formPurchasePrice}
                     onChange={(e) => setFormPurchasePrice(e.target.value)}
-                    placeholder="0.00"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none"
                   />
                 </div>
 
-                {/* Selling Price */}
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">
-                    {t('sellingPrice', langMode)} (₹)
-                  </label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{t('sellingPrice', langMode)} (₹)</label>
                   <input
                     type="number"
                     step="0.01"
                     value={formSellingPrice}
                     onChange={(e) => setFormSellingPrice(e.target.value)}
-                    placeholder="0.00"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none"
                   />
                 </div>
 
-                {/* Stock Quantity */}
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">
-                    {t('currentStock', langMode)}
-                  </label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{t('currentStock', langMode)}</label>
                   <input
                     type="number"
                     value={formStockQuantity}
-                    disabled={!!editingProduct} // In wholesale, stock is adjusted via Purchase/Sales entry
+                    disabled={!!editingProduct}
                     onChange={(e) => setFormStockQuantity(e.target.value)}
-                    placeholder="0"
-                    className={`w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors ${
-                      editingProduct ? 'opacity-60 cursor-not-allowed bg-slate-100' : ''
-                    }`}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm disabled:opacity-60 disabled:bg-slate-100"
                   />
-                  {editingProduct && (
-                    <span className="text-[9px] text-slate-400 font-semibold">
-                      * Stock edited via entries
-                    </span>
-                  )}
                 </div>
 
-                {/* Unit Type */}
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">
-                    {t('unitType', langMode)}
-                  </label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{t('unitType', langMode)}</label>
                   <select
                     value={formUnit}
                     onChange={(e) => setFormUnit(e.target.value as any)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm"
                   >
                     <option value="Packet">{t('packet', langMode)}</option>
                     <option value="Box">{t('box', langMode)}</option>
@@ -533,47 +517,38 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode }) => {
                   </select>
                 </div>
 
-                {/* Min Stock level */}
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">
-                    {t('minimumStock', langMode)}
-                  </label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{t('minimumStock', langMode)}</label>
                   <input
                     type="number"
                     value={formMinStock}
                     onChange={(e) => setFormMinStock(e.target.value)}
-                    placeholder="10"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm"
                   />
                 </div>
 
-                {/* Barcode */}
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">
-                    {t('barcode', langMode)}
-                  </label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">{t('barcode', langMode)}</label>
                   <input
                     type="text"
                     value={formBarcode}
                     onChange={(e) => setFormBarcode(e.target.value)}
-                    placeholder="Scan barcode / optional"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm"
                   />
                 </div>
               </div>
 
-              {/* Actions Footer */}
               <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 border border-slate-200 text-slate-500 hover:bg-slate-50 text-sm font-semibold rounded-xl transition-all"
+                  className="px-4 py-2 border border-slate-200 text-slate-500 hover:bg-slate-50 text-xs font-semibold rounded-xl"
                 >
                   {t('cancel', langMode)}
                 </button>
                 <button
                   type="submit"
-                  className="flex items-center gap-1 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-xl transition-all shadow-md shadow-emerald-100"
+                  className="flex items-center gap-1 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl transition-all"
                 >
                   <CheckCircle className="w-4 h-4" />
                   <span>{t('save', langMode)}</span>

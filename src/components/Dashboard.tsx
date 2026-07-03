@@ -25,19 +25,20 @@ import {
   CartesianGrid,
   Legend
 } from 'recharts';
-import { Product, Sale, Purchase, db } from '../database/db';
+import { db, User } from '../database/db';
 import { LanguageMode, t } from '../utils/translations';
 
 interface DashboardProps {
   langMode: LanguageMode;
   onNavigate: (view: string) => void;
+  currentUser: User;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate }) => {
-  // Load data reactively
-  const products = useMemo(() => db.getProducts(), []);
-  const sales = useMemo(() => db.getSales(), []);
-  const purchases = useMemo(() => db.getPurchases(), []);
+export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate, currentUser }) => {
+  // Load data reactively filtered by current tenant shop_id
+  const products = useMemo(() => db.getProducts(currentUser.id), [currentUser.id]);
+  const sales = useMemo(() => db.getSales(currentUser.id), [currentUser.id]);
+  const purchases = useMemo(() => db.getPurchases(currentUser.id), [currentUser.id]);
 
   // Helpers for calculations
   const stats = useMemo(() => {
@@ -152,7 +153,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate }) =>
           totalSales += (s.sale_price * s.quantity);
         }
       });
-      // Format to readable day (e.g. "02 Jul")
       const dObj = new Date(dt);
       const label = dObj.toLocaleDateString(langMode === 'gu' ? 'gu-IN' : 'en-US', { day: '2-digit', month: 'short' });
       return {
@@ -178,8 +178,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate }) =>
           profit += s.profit;
         }
       });
-      // Format to month name (e.g., "Jul")
-      const dObj = new Date(m + "-02"); // avoid timezone off-by-one
+      const dObj = new Date(m + "-02");
       const label = dObj.toLocaleDateString(langMode === 'gu' ? 'gu-IN' : 'en-US', { month: 'short', year: '2-digit' });
       return {
         month: label,
@@ -222,14 +221,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate }) =>
         <div className="flex gap-2">
           <button 
             onClick={() => onNavigate('sales')} 
-            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-100 hover:shadow-emerald-200"
+            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-all shadow-md hover:scale-102"
           >
             <ArrowUpRight className="w-4 h-4" />
             <span>{t('recordSale', langMode)}</span>
           </button>
           <button 
             onClick={() => onNavigate('purchases')} 
-            className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-amber-100 hover:shadow-amber-200"
+            className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-all shadow-md hover:scale-102"
           >
             <ArrowDownRight className="w-4 h-4" />
             <span>{t('recordPurchase', langMode)}</span>
@@ -240,7 +239,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate }) =>
       {/* KPI Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Products */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-start justify-between group hover:border-indigo-100 transition-all">
+        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-start justify-between group hover:border-indigo-100 transition-all animate-fade-in">
           <div className="space-y-1">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
               {t('totalProducts', langMode)}
@@ -369,7 +368,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate }) =>
                 <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `₹${v}`} />
                 <Tooltip 
                   formatter={(value) => [`₹${value}`, langMode === 'gu' ? 'વેચાણ' : 'Sales']} 
-                  contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}
+                  contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
                 />
                 <Line type="monotone" dataKey="amount" stroke="#10b981" strokeWidth={3} dot={{ r: 4, stroke: '#10b981', strokeWidth: 2, fill: '#fff' }} activeDot={{ r: 6 }} />
               </LineChart>
@@ -455,7 +454,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate }) =>
           </div>
           <div className="space-y-3">
             {topSelling.length === 0 ? (
-              <p className="text-xs text-slate-400 py-4 text-center">No sales transactions available.</p>
+              <p className="text-xs text-slate-400 py-4 text-center font-medium">No sales transactions available.</p>
             ) : (
               topSelling.map((item, idx) => (
                 <div key={idx} className="flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-50 transition-colors">
@@ -488,12 +487,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate }) =>
           </div>
           <div className="space-y-3">
             {recentTransactions.length === 0 ? (
-              <p className="text-xs text-slate-400 py-4 text-center">No transactions recorded yet.</p>
+              <p className="text-xs text-slate-400 py-4 text-center font-medium">No transactions recorded yet.</p>
             ) : (
               recentTransactions.map((tx, idx) => (
                 <div key={idx} className="flex items-start justify-between p-2.5 rounded-xl hover:bg-slate-50 transition-colors">
                   <div className="flex items-start gap-3">
-                    <span className={`p-1.5 rounded-lg text-xs font-bold shrink-0 ${
+                    <span className={`p-1.5 rounded-lg text-[9px] font-bold shrink-0 ${
                       tx.type === 'sale' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
                     }`}>
                       {tx.type === 'sale' ? 'SL' : 'PR'}
@@ -501,7 +500,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate }) =>
                     <div className="min-w-0">
                       <p className="text-xs font-bold text-slate-700 line-clamp-1">{tx.description}</p>
                       <p className="text-[10px] text-slate-400 truncate mt-0.5">{tx.party}</p>
-                      <p className="text-[9px] text-slate-300 font-medium">
+                      <p className="text-[9px] text-slate-305 font-medium">
                         {new Date(tx.date).toLocaleDateString(langMode === 'gu' ? 'gu-IN' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
@@ -511,7 +510,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate }) =>
                       {tx.type === 'sale' ? '+' : '-'}₹{tx.amount.toLocaleString()}
                     </p>
                     {tx.type === 'sale' && (
-                      <span className="text-[9px] font-bold text-emerald-600">
+                      <span className="text-[9px] font-bold text-emerald-600 block">
                         +₹{tx.profit.toLocaleString()} Profit
                       </span>
                     )}

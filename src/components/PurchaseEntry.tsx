@@ -9,19 +9,21 @@ import {
   Clock, 
   Search,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Lock
 } from 'lucide-react';
-import { Product, Supplier, Purchase, db } from '../database/db';
+import { Product, Supplier, Purchase, db, User as UserType } from '../database/db';
 import { LanguageMode, t } from '../utils/translations';
 
 interface PurchaseEntryProps {
   langMode: LanguageMode;
+  currentUser: UserType;
 }
 
-export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({ langMode }) => {
-  const [products] = useState<Product[]>(() => db.getProducts());
-  const [suppliers] = useState<Supplier[]>(() => db.getSuppliers());
-  const [purchases, setPurchases] = useState<Purchase[]>(() => db.getPurchases());
+export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({ langMode, currentUser }) => {
+  const [products] = useState<Product[]>(() => db.getProducts(currentUser.id));
+  const [suppliers] = useState<Supplier[]>(() => db.getSuppliers(currentUser.id));
+  const [purchases, setPurchases] = useState<Purchase[]>(() => db.getPurchases(currentUser.id));
   
   // Search query for history
   const [historySearch, setHistorySearch] = useState('');
@@ -34,6 +36,11 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({ langMode }) => {
   const [purchaseRate, setPurchaseRate] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Expiry check
+  const isExpired = useMemo(() => {
+    return new Date(currentUser.plan_expiry) < new Date();
+  }, [currentUser.plan_expiry]);
 
   // Auto calculate total amount
   const totalAmount = useMemo(() => {
@@ -59,6 +66,7 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({ langMode }) => {
   // Form submission
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isExpired) return; // Guard
     setSuccessMsg('');
     setErrorMsg('');
 
@@ -76,11 +84,11 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({ langMode }) => {
     const rate = parseFloat(purchaseRate);
 
     if (isNaN(qty) || qty <= 0) {
-      setErrorMsg(langMode === 'gu' ? 'કૃપા કરીને માન્ય જથ્થો દાખલ કરો' : 'Please enter a valid quantity');
+      setErrorMsg(langMode === 'gu' ? 'કૃપા કરીને સરેરાશ જથ્થો દાખલ કરો' : 'Please enter a valid quantity');
       return;
     }
     if (isNaN(rate) || rate < 0) {
-      setErrorMsg(langMode === 'gu' ? 'કૃપા કરીને માન્ય ખરીદી દર દાખલ કરો' : 'Please enter a valid purchase rate');
+      setErrorMsg(langMode === 'gu' ? 'કૃપા કરીને અમાન્ય ખરીદી દર દાખલ કરો' : 'Please enter a valid purchase rate');
       return;
     }
 
@@ -88,7 +96,7 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({ langMode }) => {
     if (!product) return;
 
     try {
-      const newPurchase: Omit<Purchase, 'id'> = {
+      const newPurchase: Omit<Purchase, 'id' | 'shop_id'> = {
         purchase_date: new Date(purchaseDate).toISOString(),
         supplier_name: supplierName.trim(),
         product_id: selectedProductId,
@@ -98,19 +106,17 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({ langMode }) => {
         total_amount: parseFloat(totalAmount)
       };
 
-      const recorded = db.addPurchase(newPurchase);
+      db.addPurchase(newPurchase, currentUser.id);
       
       // Update local state list
-      setPurchases(db.getPurchases());
+      setPurchases(db.getPurchases(currentUser.id));
       
-      // Reset form (except date and supplier for sequential entry convenience!)
       setSelectedProductId('');
       setQuantity('');
       setPurchaseRate('');
       
-      setSuccessMsg(langMode === 'gu' ? 'ખરીદી સફળતાપૂર્વક નોંધાઈ ગઈ છે અને સ્ટોક વધારવામાં આવ્યો છે.' : 'Purchase successfully recorded and stock quantity incremented!');
+      setSuccessMsg(langMode === 'gu' ? 'ખરીદી સફળતાપૂર્વક નોંધાઈ ગઈ છે.' : 'Purchase successfully recorded and stock quantity incremented!');
       
-      // Clear success after 4s
       setTimeout(() => setSuccessMsg(''), 4000);
     } catch (err: any) {
       setErrorMsg(err.message || 'Error recording purchase');
@@ -141,7 +147,7 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({ langMode }) => {
         </p>
       </div>
 
-      {/* Main Grid: Form Left, History Right */}
+      {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Form Column */}
         <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm h-fit">
@@ -167,6 +173,13 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({ langMode }) => {
               </div>
             )}
 
+            {isExpired && (
+              <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-bold flex items-center gap-2">
+                <Lock className="w-4 h-4 shrink-0 animate-pulse" />
+                <span>Subscription Expired! Read-Only Mode Active.</span>
+              </div>
+            )}
+
             {/* Date Input */}
             <div className="space-y-1">
               <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
@@ -176,12 +189,13 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({ langMode }) => {
               <input
                 type="date"
                 value={purchaseDate}
+                disabled={isExpired}
                 onChange={(e) => setPurchaseDate(e.target.value)}
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
               />
             </div>
 
-            {/* Supplier Datalist Selector */}
+            {/* Supplier Selector */}
             <div className="space-y-1">
               <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
                 <User className="w-3.5 h-3.5 text-slate-400" />
@@ -191,9 +205,10 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({ langMode }) => {
                 type="text"
                 list="suppliers-list"
                 value={supplierName}
+                disabled={isExpired}
                 onChange={(e) => setSupplierName(e.target.value)}
                 placeholder={langMode === 'gu' ? 'સપ્લાયર પસંદ કરો અથવા લખો' : 'Select or type supplier name'}
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
               />
               <datalist id="suppliers-list">
                 {suppliers.map(s => (
@@ -210,8 +225,9 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({ langMode }) => {
               </label>
               <select
                 value={selectedProductId}
+                disabled={isExpired}
                 onChange={(e) => handleProductChange(e.target.value)}
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <option value="">{langMode === 'gu' ? '-- પસંદ કરો --' : '-- Choose Product --'}</option>
                 {products.map(p => (
@@ -233,8 +249,9 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({ langMode }) => {
                   type="number"
                   placeholder="0"
                   value={quantity}
+                  disabled={isExpired}
                   onChange={(e) => setQuantity(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
 
@@ -248,30 +265,38 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({ langMode }) => {
                   step="0.01"
                   placeholder="0.00"
                   value={purchaseRate}
+                  disabled={isExpired}
                   onChange={(e) => setPurchaseRate(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
             </div>
 
             {/* Total Display */}
-            <div className="p-4 bg-emerald-50/50 border border-emerald-100 rounded-xl flex items-center justify-between">
+            <div className="p-4 bg-emerald-50/50 border border-emerald-100 rounded-xl flex items-center justify-between animate-pulse">
               <span className="text-xs font-bold text-slate-500 uppercase">{t('totalAmount', langMode)}:</span>
               <span className="text-xl font-black text-emerald-700">₹{parseFloat(totalAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
             </div>
 
             {/* Submit */}
-            <button
-              type="submit"
-              className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition-all shadow-md shadow-emerald-100"
-            >
-              {t('recordPurchase', langMode)}
-            </button>
+            {!isExpired ? (
+              <button
+                type="submit"
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition-all shadow-md shadow-emerald-100"
+              >
+                {t('recordPurchase', langMode)}
+              </button>
+            ) : (
+              <div className="w-full py-3 bg-slate-100 border border-slate-200 text-slate-400 font-bold text-sm rounded-xl text-center select-none flex items-center justify-center gap-2">
+                <Lock className="w-4 h-4" />
+                <span>{t('recordPurchase', langMode)} (Locked)</span>
+              </div>
+            )}
           </form>
         </div>
 
         {/* History Column */}
-        <div className="lg:col-span-3 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col">
+        <div className="lg:col-span-3 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col animate-fade-in">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
             <h3 className="font-bold text-slate-700 flex items-center gap-2">
               <span className="p-1.5 bg-slate-100 text-slate-500 rounded-lg">
@@ -279,7 +304,7 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({ langMode }) => {
               </span>
               <span>{t('purchaseHistory', langMode)}</span>
             </h3>
-            {/* Tiny Search bar */}
+            
             <div className="relative w-full sm:w-48">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
               <input
@@ -287,16 +312,15 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({ langMode }) => {
                 placeholder={langMode === 'gu' ? 'શોધો...' : 'Search logs...'}
                 value={historySearch}
                 onChange={(e) => setHistorySearch(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:border-emerald-500"
+                className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none"
               />
             </div>
           </div>
 
-          {/* Table list */}
           <div className="flex-1 overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-slate-50/70 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                <tr className="bg-slate-50/70 text-[10px] font-bold text-slate-400 uppercase border-b border-slate-100">
                   <th className="px-4 py-2">{t('purchaseDate', langMode)}</th>
                   <th className="px-4 py-2">{langMode === 'gu' ? 'ઉત્પાદન' : 'Product'}</th>
                   <th className="px-4 py-2">{t('supplierName', langMode)}</th>
@@ -318,7 +342,7 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({ langMode }) => {
                         {new Date(p.purchase_date).toLocaleDateString(langMode === 'gu' ? 'gu-IN' : 'en-US')}
                       </td>
                       <td className="px-4 py-3 font-semibold text-slate-800">{p.product_name}</td>
-                      <td className="px-4 py-3 text-slate-500 line-clamp-1 max-w-[140px]">{p.supplier_name}</td>
+                      <td className="px-4 py-3 text-slate-500">{p.supplier_name}</td>
                       <td className="px-4 py-3 text-right font-medium text-slate-700">
                         {p.quantity} units
                       </td>

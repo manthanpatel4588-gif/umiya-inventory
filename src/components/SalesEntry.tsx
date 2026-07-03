@@ -10,19 +10,21 @@ import {
   Search,
   CheckCircle,
   AlertTriangle,
-  Receipt
+  Receipt,
+  Lock
 } from 'lucide-react';
-import { Product, Sale, db } from '../database/db';
+import { Product, Sale, db, User as UserType } from '../database/db';
 import { LanguageMode, t } from '../utils/translations';
 import { InvoiceModal } from './InvoiceModal';
 
 interface SalesEntryProps {
   langMode: LanguageMode;
+  currentUser: UserType;
 }
 
-export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode }) => {
-  const [products, setProducts] = useState<Product[]>(() => db.getProducts());
-  const [sales, setSales] = useState<Sale[]>(() => db.getSales());
+export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser }) => {
+  const [products, setProducts] = useState<Product[]>(() => db.getProducts(currentUser.id));
+  const [sales, setSales] = useState<Sale[]>(() => db.getSales(currentUser.id));
   
   // Search query for history
   const [historySearch, setHistorySearch] = useState('');
@@ -35,6 +37,11 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode }) => {
   const [sellingPrice, setSellingPrice] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Expiry check
+  const isExpired = useMemo(() => {
+    return new Date(currentUser.plan_expiry) < new Date();
+  }, [currentUser.plan_expiry]);
 
   // Invoice Modal state
   const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
@@ -71,6 +78,7 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode }) => {
   // Form submission
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isExpired) return; // Guard
     setSuccessMsg('');
     setErrorMsg('');
 
@@ -101,7 +109,7 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode }) => {
     }
 
     try {
-      const newSale: Omit<Sale, 'id' | 'profit' | 'invoice_number'> = {
+      const newSale: Omit<Sale, 'id' | 'shop_id' | 'profit' | 'invoice_number'> = {
         sale_date: new Date(saleDate).toISOString(),
         product_id: selectedProductId,
         product_name: selectedProduct.product_name,
@@ -110,17 +118,15 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode }) => {
         customer_name: customerName.trim() || undefined
       };
 
-      const recorded = db.addSale(newSale);
+      const recorded = db.addSale(newSale, currentUser.id);
       
-      // Update local state collections
-      setProducts(db.getProducts());
-      setSales(db.getSales());
+      // Update local state
+      setProducts(db.getProducts(currentUser.id));
+      setSales(db.getSales(currentUser.id));
       
-      // Save recorded sale to show in invoice modal
       setActiveInvoiceSale(recorded);
       setIsInvoiceOpen(true);
 
-      // Reset form fields
       setSelectedProductId('');
       setQuantity('');
       setSellingPrice('');
@@ -190,6 +196,13 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode }) => {
               </div>
             )}
 
+            {isExpired && (
+              <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-bold flex items-center gap-2">
+                <Lock className="w-4 h-4 shrink-0 animate-pulse" />
+                <span>Subscription Expired! Read-Only Mode Active.</span>
+              </div>
+            )}
+
             {/* Date Input */}
             <div className="space-y-1">
               <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
@@ -199,8 +212,9 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode }) => {
               <input
                 type="date"
                 value={saleDate}
+                disabled={isExpired}
                 onChange={(e) => setSaleDate(e.target.value)}
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               />
             </div>
 
@@ -212,10 +226,11 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode }) => {
               </label>
               <input
                 type="text"
+                disabled={isExpired}
                 placeholder={langMode === 'gu' ? 'ગ્રાહકનું નામ (વૈકલ્પિક)' : 'Customer Name (Optional)'}
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               />
             </div>
 
@@ -227,8 +242,9 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode }) => {
               </label>
               <select
                 value={selectedProductId}
+                disabled={isExpired}
                 onChange={(e) => handleProductChange(e.target.value)}
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <option value="">{langMode === 'gu' ? '-- પસંદ કરો --' : '-- Choose Product --'}</option>
                 {products.map(p => (
@@ -260,8 +276,9 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode }) => {
                   type="number"
                   placeholder="0"
                   value={quantity}
+                  disabled={isExpired}
                   onChange={(e) => setQuantity(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
 
@@ -275,13 +292,14 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode }) => {
                   step="0.01"
                   placeholder="0.00"
                   value={sellingPrice}
+                  disabled={isExpired}
                   onChange={(e) => setSellingPrice(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
             </div>
 
-            {/* Profit estimation banner */}
+            {/* Profit margin */}
             {selectedProduct && quantity && sellingPrice && (
               <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs text-slate-500 flex justify-between items-center font-medium">
                 <span>Profit Margin:</span>
@@ -298,12 +316,19 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode }) => {
             </div>
 
             {/* Submit */}
-            <button
-              type="submit"
-              className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition-all shadow-md shadow-emerald-100"
-            >
-              {t('recordSale', langMode)}
-            </button>
+            {!isExpired ? (
+              <button
+                type="submit"
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition-all shadow-md shadow-emerald-100"
+              >
+                {t('recordSale', langMode)}
+              </button>
+            ) : (
+              <div className="w-full py-3 bg-slate-100 border border-slate-200 text-slate-400 font-bold text-sm rounded-xl text-center select-none flex items-center justify-center gap-2">
+                <Lock className="w-4 h-4" />
+                <span>{t('recordSale', langMode)} (Locked)</span>
+              </div>
+            )}
           </form>
         </div>
 
@@ -316,7 +341,7 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode }) => {
               </span>
               <span>{t('salesHistory', langMode)}</span>
             </h3>
-            {/* Search bar */}
+            
             <div className="relative w-full sm:w-48">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
               <input
@@ -324,7 +349,7 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode }) => {
                 placeholder={langMode === 'gu' ? 'બીલ નંબર અથવા નામ...' : 'Search invoice / customer...'}
                 value={historySearch}
                 onChange={(e) => setHistorySearch(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:border-emerald-500"
+                className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none"
               />
             </div>
           </div>
@@ -333,7 +358,7 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode }) => {
           <div className="flex-1 overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-slate-50/70 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                <tr className="bg-slate-50/70 text-[10px] font-bold text-slate-400 uppercase border-b border-slate-100">
                   <th className="px-3 py-2">{t('invoiceNumber', langMode)}</th>
                   <th className="px-3 py-2">{langMode === 'gu' ? 'ઉત્પાદન' : 'Product'}</th>
                   <th className="px-3 py-2 text-right">{t('quantity', langMode)}</th>
@@ -355,7 +380,7 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode }) => {
                       <td className="px-3 py-3">
                         <div className="flex flex-col">
                           <span className="font-bold text-slate-800">{s.invoice_number}</span>
-                          <span className="text-[9px] text-slate-400">
+                          <span className="text-[9px] text-slate-400 font-normal">
                             {new Date(s.sale_date).toLocaleDateString(langMode === 'gu' ? 'gu-IN' : 'en-US')}
                           </span>
                         </div>
@@ -363,7 +388,7 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode }) => {
                       <td className="px-3 py-3">
                         <div className="flex flex-col">
                           <span className="font-semibold text-slate-800 line-clamp-1">{s.product_name}</span>
-                          <span className="text-[9px] text-slate-400">To: {s.customer_name || 'Walk-in'}</span>
+                          <span className="text-[9px] text-slate-450 font-normal">To: {s.customer_name || 'Walk-in'}</span>
                         </div>
                       </td>
                       <td className="px-3 py-3 text-right font-medium text-slate-700">
@@ -394,7 +419,6 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode }) => {
 
       </div>
 
-      {/* Invoice Receipt Modal Dialog */}
       <InvoiceModal
         isOpen={isInvoiceOpen}
         onClose={() => {

@@ -12,18 +12,20 @@ import {
   History,
   X,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Lock
 } from 'lucide-react';
-import { Supplier, Purchase, db } from '../database/db';
+import { Supplier, Purchase, db, User as UserType } from '../database/db';
 import { LanguageMode, t } from '../utils/translations';
 
 interface SupplierManagerProps {
   langMode: LanguageMode;
+  currentUser: UserType;
 }
 
-export const SupplierManager: React.FC<SupplierManagerProps> = ({ langMode }) => {
-  const [suppliers, setSuppliers] = useState<Supplier[]>(() => db.getSuppliers());
-  const [purchases] = useState<Purchase[]>(() => db.getPurchases());
+export const SupplierManager: React.FC<SupplierManagerProps> = ({ langMode, currentUser }) => {
+  const [suppliers, setSuppliers] = useState<Supplier[]>(() => db.getSuppliers(currentUser.id));
+  const [purchases] = useState<Purchase[]>(() => db.getPurchases(currentUser.id));
   
   // Selected supplier for detail view
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>(() => suppliers[0]?.id || '');
@@ -44,6 +46,11 @@ export const SupplierManager: React.FC<SupplierManagerProps> = ({ langMode }) =>
   const [formOutstanding, setFormOutstanding] = useState('');
   const [formError, setFormError] = useState('');
 
+  // Expiry check
+  const isExpired = useMemo(() => {
+    return new Date(currentUser.plan_expiry) < new Date();
+  }, [currentUser.plan_expiry]);
+
   // Find active supplier details
   const activeSupplier = useMemo(() => {
     return suppliers.find(s => s.id === selectedSupplierId) || null;
@@ -52,13 +59,13 @@ export const SupplierManager: React.FC<SupplierManagerProps> = ({ langMode }) =>
   // Find active supplier purchase history
   const supplierPurchases = useMemo(() => {
     if (!activeSupplier) return [];
-    // Matches by supplier name (standard wholesale matching since IDs might not align in custom typed entry lists)
     return purchases.filter(p => 
       p.supplier_name.toLowerCase().includes(activeSupplier.supplier_name.split(' (')[0].toLowerCase())
     );
   }, [purchases, activeSupplier]);
 
   const handleOpenAddModal = () => {
+    if (isExpired) return; // Guard
     setEditingSupplier(null);
     setFormName('');
     setFormMobile('');
@@ -70,7 +77,8 @@ export const SupplierManager: React.FC<SupplierManagerProps> = ({ langMode }) =>
   };
 
   const handleOpenEditModal = (supplier: Supplier, e: React.MouseEvent) => {
-    e.stopPropagation(); // Avoid selecting supplier while editing
+    e.stopPropagation();
+    if (isExpired) return; // Guard
     setEditingSupplier(supplier);
     setFormName(supplier.supplier_name);
     setFormMobile(supplier.mobile);
@@ -83,6 +91,7 @@ export const SupplierManager: React.FC<SupplierManagerProps> = ({ langMode }) =>
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isExpired) return; // Guard
     setFormError('');
 
     if (!formName.trim()) {
@@ -102,6 +111,7 @@ export const SupplierManager: React.FC<SupplierManagerProps> = ({ langMode }) =>
 
     const payload: Supplier = {
       id: editingSupplier ? editingSupplier.id : `sup-${Date.now()}`,
+      shop_id: currentUser.id,
       supplier_name: formName.trim(),
       mobile: formMobile.trim(),
       address: formAddress.trim() || 'Gujarat, India',
@@ -109,10 +119,9 @@ export const SupplierManager: React.FC<SupplierManagerProps> = ({ langMode }) =>
       outstanding_payment: outstanding
     };
 
-    const updated = db.saveSupplier(payload);
+    const updated = db.saveSupplier(payload, currentUser.id);
     setSuppliers(updated);
     
-    // Auto-select newly created supplier
     if (!editingSupplier) {
       setSelectedSupplierId(payload.id);
     }
@@ -122,13 +131,14 @@ export const SupplierManager: React.FC<SupplierManagerProps> = ({ langMode }) =>
 
   const handleDelete = (id: string, name: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (isExpired) return; // Guard
     const confirmation = confirm(
       langMode === 'gu' 
         ? `શું તમે ખરેખર "${name}" સપ્લાયરને કાઢી નાખવા માંગો છો?` 
         : `Are you sure you want to delete supplier "${name}"?`
     );
     if (confirmation) {
-      const updated = db.deleteSupplier(id);
+      const updated = db.deleteSupplier(id, currentUser.id);
       setSuppliers(updated);
       if (selectedSupplierId === id) {
         setSelectedSupplierId(updated[0]?.id || '');
@@ -136,10 +146,9 @@ export const SupplierManager: React.FC<SupplierManagerProps> = ({ langMode }) =>
     }
   };
 
-  // Settle payments
   const handleSettlePayment = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeSupplier) return;
+    if (isExpired || !activeSupplier) return; // Guard
 
     const amt = parseFloat(settleAmount);
     if (isNaN(amt) || amt <= 0 || amt > activeSupplier.outstanding_payment) {
@@ -152,7 +161,7 @@ export const SupplierManager: React.FC<SupplierManagerProps> = ({ langMode }) =>
       outstanding_payment: activeSupplier.outstanding_payment - amt
     };
 
-    const updated = db.saveSupplier(payload);
+    const updated = db.saveSupplier(payload, currentUser.id);
     setSuppliers(updated);
     setIsSettleOpen(false);
     setSettleAmount('');
@@ -172,16 +181,24 @@ export const SupplierManager: React.FC<SupplierManagerProps> = ({ langMode }) =>
               : 'Manage wholesaler/supplier directory, outstanding balances, and purchase accounts.'}
           </p>
         </div>
-        <button 
-          onClick={handleOpenAddModal}
-          className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-100"
-        >
-          <Plus className="w-4 h-4" />
-          <span>{t('addSupplier', langMode)}</span>
-        </button>
+        
+        {!isExpired ? (
+          <button 
+            onClick={handleOpenAddModal}
+            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md"
+          >
+            <Plus className="w-4 h-4" />
+            <span>{t('addSupplier', langMode)}</span>
+          </button>
+        ) : (
+          <div className="flex items-center gap-1.5 bg-slate-100 border border-slate-200 text-slate-400 text-xs font-bold px-4 py-2.5 rounded-xl cursor-not-allowed select-none shadow-sm">
+            <Lock className="w-3.5 h-3.5" />
+            <span>{t('addSupplier', langMode)} (Locked)</span>
+          </div>
+        )}
       </div>
 
-      {/* Main Double Pane grid */}
+      {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         
         {/* Suppliers List Pane */}
@@ -192,7 +209,7 @@ export const SupplierManager: React.FC<SupplierManagerProps> = ({ langMode }) =>
           
           <div className="space-y-2 overflow-y-auto max-h-[600px] pr-1">
             {suppliers.length === 0 ? (
-              <div className="bg-white p-8 rounded-2xl text-center text-slate-400 border border-slate-100">
+              <div className="bg-white p-8 rounded-2xl text-center text-slate-400 border border-slate-100 font-medium">
                 No suppliers registered.
               </div>
             ) : (
@@ -213,32 +230,33 @@ export const SupplierManager: React.FC<SupplierManagerProps> = ({ langMode }) =>
                         <h4 className="font-bold text-slate-800 group-hover:text-emerald-700 transition-colors">
                           {s.supplier_name}
                         </h4>
-                        <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-1">
+                        <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-1 font-semibold">
                           <Phone className="w-3.5 h-3.5 shrink-0" />
                           <span>{s.mobile}</span>
                         </div>
                       </div>
 
-                      {/* Edit Delete floating actions */}
-                      <div className="flex items-center gap-1.5 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={(e) => handleOpenEditModal(s, e)}
-                          className="p-1 bg-slate-50 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 border border-slate-100 rounded-lg transition-colors"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={(e) => handleDelete(s.id, s.supplier_name, e)}
-                          className="p-1 bg-slate-50 text-slate-400 hover:text-red-600 hover:bg-red-50 border border-slate-100 rounded-lg transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                      {/* Edit Delete actions */}
+                      {!isExpired && (
+                        <div className="flex items-center gap-1.5 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={(e) => handleOpenEditModal(s, e)}
+                            className="p-1 bg-slate-50 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 border border-slate-100 rounded-lg transition-colors"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={(e) => handleDelete(s.id, s.supplier_name, e)}
+                            className="p-1 bg-slate-50 text-slate-400 hover:text-red-600 hover:bg-red-50 border border-slate-100 rounded-lg transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </div>
 
-                    {/* Footer badge with outstanding amount */}
                     <div className="flex items-center justify-between border-t border-slate-100 pt-3 mt-1">
-                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">GSTIN: {s.gst_number}</span>
+                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">GST: {s.gst_number}</span>
                       <span className={`text-xs font-extrabold px-2.5 py-0.5 rounded-full ${
                         s.outstanding_payment > 0 
                           ? 'bg-amber-100 text-amber-700' 
@@ -254,11 +272,10 @@ export const SupplierManager: React.FC<SupplierManagerProps> = ({ langMode }) =>
           </div>
         </div>
 
-        {/* Supplier Detail & History Pane */}
+        {/* Supplier Detail Pane */}
         <div className="lg:col-span-3">
           {activeSupplier ? (
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col h-full">
-              {/* Header Title Banner */}
               <div className="p-6 bg-slate-50 border-b border-slate-100 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                 <div>
                   <h3 className="text-lg font-black text-slate-800">
@@ -272,17 +289,25 @@ export const SupplierManager: React.FC<SupplierManagerProps> = ({ langMode }) =>
 
                 {/* Settle outstanding balance button */}
                 {activeSupplier.outstanding_payment > 0 && (
-                  <button 
-                    onClick={() => setIsSettleOpen(true)}
-                    className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition-all shadow-md shadow-emerald-100"
-                  >
-                    <CreditCard className="w-3.5 h-3.5" />
-                    <span>{langMode === 'gu' ? 'ચુકવણી સેટલ કરો' : 'Settle Payment'}</span>
-                  </button>
+                  <>
+                    {!isExpired ? (
+                      <button 
+                        onClick={() => setIsSettleOpen(true)}
+                        className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition-all shadow-md"
+                      >
+                        <CreditCard className="w-3.5 h-3.5" />
+                        <span>{langMode === 'gu' ? 'ચુકવણી સેટલ કરો' : 'Settle Payment'}</span>
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-1.5 bg-slate-100 border border-slate-200 text-slate-400 text-xs font-bold px-3.5 py-2 rounded-xl cursor-not-allowed select-none shadow-sm">
+                        <Lock className="w-3.5 h-3.5" />
+                        <span>Settle (Locked)</span>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 
-              {/* Outstanding payment details widget */}
               <div className="p-6 grid grid-cols-2 gap-4 border-b border-slate-100">
                 <div className="bg-amber-50/50 p-4 border border-amber-100 rounded-xl">
                   <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
@@ -302,10 +327,10 @@ export const SupplierManager: React.FC<SupplierManagerProps> = ({ langMode }) =>
                 </div>
               </div>
 
-              {/* Purchase history list specific to this supplier */}
+              {/* Purchase history */}
               <div className="p-6 flex-1 flex flex-col min-h-[300px]">
                 <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2 text-sm">
-                  <History className="w-4 h-4 text-slate-500" />
+                  <Clock className="w-4 h-4 text-slate-500" />
                   <span>{langMode === 'gu' ? 'ખરીદી ઇતિહાસ' : 'Supplier Purchase History Log'}</span>
                 </h4>
 
@@ -320,7 +345,7 @@ export const SupplierManager: React.FC<SupplierManagerProps> = ({ langMode }) =>
                         <th className="px-4 py-2 text-right">{t('totalAmount', langMode)}</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 text-xs text-slate-600">
+                    <tbody className="divide-y divide-slate-100 text-xs text-slate-600 font-medium">
                       {supplierPurchases.length === 0 ? (
                         <tr>
                           <td colSpan={5} className="px-4 py-12 text-center text-slate-400">
@@ -337,8 +362,8 @@ export const SupplierManager: React.FC<SupplierManagerProps> = ({ langMode }) =>
                             </td>
                             <td className="px-4 py-3 font-semibold text-slate-800">{p.product_name}</td>
                             <td className="px-4 py-3 text-right">{p.quantity}</td>
-                            <td className="px-4 py-3 text-right">₹{p.purchase_price.toFixed(2)}</td>
-                            <td className="px-4 py-3 text-right font-bold text-emerald-600">₹{p.total_amount.toFixed(2)}</td>
+                            <td className="px-4 py-3 text-right font-semibold">₹{p.purchase_price.toFixed(2)}</td>
+                            <td className="px-4 py-3 text-right font-black text-emerald-600">₹{p.total_amount.toFixed(2)}</td>
                           </tr>
                         ))
                       )}
@@ -348,7 +373,7 @@ export const SupplierManager: React.FC<SupplierManagerProps> = ({ langMode }) =>
               </div>
             </div>
           ) : (
-            <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl p-12 text-center text-slate-400 h-full flex flex-col justify-center">
+            <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl p-12 text-center text-slate-400 h-full flex flex-col justify-center font-bold">
               Please register or select a supplier to view account profiles.
             </div>
           )}
@@ -386,7 +411,6 @@ export const SupplierManager: React.FC<SupplierManagerProps> = ({ langMode }) =>
               )}
 
               <div className="space-y-3">
-                {/* Name */}
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">
                     Supplier Name / પેઢીનું નામ
@@ -400,7 +424,6 @@ export const SupplierManager: React.FC<SupplierManagerProps> = ({ langMode }) =>
                   />
                 </div>
 
-                {/* Mobile */}
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">
                     Mobile Number / મોબાઇલ નંબર
@@ -415,7 +438,6 @@ export const SupplierManager: React.FC<SupplierManagerProps> = ({ langMode }) =>
                   />
                 </div>
 
-                {/* Address */}
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">
                     Shop Address / સરનામું
@@ -424,12 +446,11 @@ export const SupplierManager: React.FC<SupplierManagerProps> = ({ langMode }) =>
                     rows={2}
                     value={formAddress}
                     onChange={(e) => setFormAddress(e.target.value)}
-                    placeholder="APMC Market, Unjha, Gujarat..."
+                    placeholder="APMC Market, Unjha..."
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500"
                   />
                 </div>
 
-                {/* GSTIN */}
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">
                     GSTIN Number (Optional)
@@ -443,7 +464,6 @@ export const SupplierManager: React.FC<SupplierManagerProps> = ({ langMode }) =>
                   />
                 </div>
 
-                {/* Initial Outstanding */}
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">
                     Initial Outstanding Balance / શરૂઆતની બાકી રકમ (₹)

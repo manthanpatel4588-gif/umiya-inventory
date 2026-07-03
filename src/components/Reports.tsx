@@ -7,22 +7,22 @@ import {
   DollarSign, 
   Layers, 
   TrendingUp, 
-  ChevronRight,
   PieChart as PieIcon
 } from 'lucide-react';
-import { Product, Purchase, Sale, db } from '../database/db';
+import { Product, Purchase, Sale, db, User as UserType } from '../database/db';
 import { LanguageMode, t } from '../utils/translations';
 
 interface ReportsProps {
   langMode: LanguageMode;
+  currentUser: UserType;
 }
 
 type ReportType = 'sales' | 'purchases' | 'profit' | 'stock' | 'category';
 
-export const Reports: React.FC<ReportsProps> = ({ langMode }) => {
-  const [products] = useState<Product[]>(() => db.getProducts());
-  const [purchases] = useState<Purchase[]>(() => db.getPurchases());
-  const [sales] = useState<Sale[]>(() => db.getSales());
+export const Reports: React.FC<ReportsProps> = ({ langMode, currentUser }) => {
+  const [products] = useState<Product[]>(() => db.getProducts(currentUser.id));
+  const [purchases] = useState<Purchase[]>(() => db.getPurchases(currentUser.id));
+  const [sales] = useState<Sale[]>(() => db.getSales(currentUser.id));
 
   const [reportType, setReportType] = useState<ReportType>('sales');
   
@@ -88,7 +88,6 @@ export const Reports: React.FC<ReportsProps> = ({ langMode }) => {
   const categoryReportData = useMemo(() => {
     const map: Record<string, { totalProducts: number; totalStock: number; stockValue: number; salesVal: number; profitVal: number }> = {};
     
-    // Group products
     products.forEach(p => {
       if (!map[p.category]) {
         map[p.category] = { totalProducts: 0, totalStock: 0, stockValue: 0, salesVal: 0, profitVal: 0 };
@@ -98,7 +97,6 @@ export const Reports: React.FC<ReportsProps> = ({ langMode }) => {
       map[p.category].stockValue += p.stock_quantity * p.purchase_price;
     });
 
-    // Add sales during the date range
     salesReportData.forEach(s => {
       const p = products.find(prod => prod.id === s.product_id);
       const cat = p ? p.category : 'General FMCG';
@@ -115,7 +113,7 @@ export const Reports: React.FC<ReportsProps> = ({ langMode }) => {
     }));
   }, [products, salesReportData]);
 
-  // Aggregated Summary totals
+  // Summary Totals
   const summary = useMemo(() => {
     if (reportType === 'sales') {
       const totalSalesAmt = salesReportData.reduce((acc, s) => acc + (s.quantity * s.sale_price), 0);
@@ -154,7 +152,6 @@ export const Reports: React.FC<ReportsProps> = ({ langMode }) => {
         accentBg: 'bg-emerald-50'
       };
     }
-    // Stock Report summary
     const totalQty = stockReportData.reduce((acc, p) => acc + p.stock_quantity, 0);
     const totalCost = stockReportData.reduce((acc, p) => acc + p.stock_value_cost, 0);
     return {
@@ -167,7 +164,7 @@ export const Reports: React.FC<ReportsProps> = ({ langMode }) => {
     };
   }, [reportType, salesReportData, purchasesReportData, stockReportData, langMode]);
 
-  // CSV EXPORT GENERATOR
+  // CSV EXPORT
   const handleExport = () => {
     let headers: string[] = [];
     let rows: any[][] = [];
@@ -226,7 +223,6 @@ export const Reports: React.FC<ReportsProps> = ({ langMode }) => {
       ...rows.map(r => r.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))
     ].join('\n');
 
-    // BOM for Excel Gujarati characters compatibility
     const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -237,15 +233,14 @@ export const Reports: React.FC<ReportsProps> = ({ langMode }) => {
     document.body.removeChild(link);
   };
 
-  // PRINT REPORT WINDOW (Uses default window.print on a duplicated printable layout)
   const handlePrint = () => {
     const printRoot = document.createElement('div');
     printRoot.id = 'print-root';
     printRoot.innerHTML = `
       <div class="p-8 space-y-4">
         <div class="text-center pb-4 border-b">
-          <h2 class="text-xl font-bold">UMIYA INVENTORY MANAGEMENT SYSTEM</h2>
-          <p class="text-sm">Wholesale Shop Reports Dashboard</p>
+          <h2 class="text-xl font-bold">${currentUser.shop_name.toUpperCase()}</h2>
+          <p class="text-sm">Reports Dashboard</p>
           <p class="text-xs text-slate-500">Report: ${reportType.toUpperCase()} | Date: ${dateLimits.start} to ${dateLimits.end}</p>
         </div>
         ${document.getElementById('report-table-printable')?.innerHTML || ''}
@@ -273,14 +268,14 @@ export const Reports: React.FC<ReportsProps> = ({ langMode }) => {
         <div className="flex gap-2">
           <button 
             onClick={handlePrint}
-            className="flex items-center gap-1.5 border border-slate-200 hover:bg-slate-50 text-slate-600 text-sm font-semibold px-4 py-2.5 rounded-xl transition-all shadow-sm"
+            className="flex items-center gap-1.5 border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm"
           >
             <Printer className="w-4 h-4" />
             <span>{t('print', langMode)}</span>
           </button>
           <button 
             onClick={handleExport}
-            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-100"
+            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md"
           >
             <Download className="w-4 h-4" />
             <span>{t('exportExcel', langMode)}</span>
@@ -307,7 +302,7 @@ export const Reports: React.FC<ReportsProps> = ({ langMode }) => {
                 onClick={() => setReportType(tab.id as ReportType)}
                 className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl transition-all ${
                   isActive 
-                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-100' 
+                    ? 'bg-emerald-600 text-white shadow-md' 
                     : 'text-slate-600 hover:bg-slate-100'
                 }`}
               >
@@ -318,11 +313,9 @@ export const Reports: React.FC<ReportsProps> = ({ langMode }) => {
           })}
         </div>
 
-        {/* Date Ranges Filters (Hidden for stock report since stock is real-time current count!) */}
+        {/* Date Ranges Filters */}
         {reportType !== 'stock' && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
-            
-            {/* Quick Presets */}
             <div className="space-y-1">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">
                 Quick Ranges / તારીખ પ્રીસેટ
@@ -335,9 +328,7 @@ export const Reports: React.FC<ReportsProps> = ({ langMode }) => {
                 ].map(r => (
                   <button
                     key={r.id}
-                    onClick={() => {
-                      setDateRangeType(r.id as any);
-                    }}
+                    onClick={() => setDateRangeType(r.id as any)}
                     className={`py-1 rounded-md font-semibold text-center ${
                       dateRangeType === r.id 
                         ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
@@ -350,7 +341,6 @@ export const Reports: React.FC<ReportsProps> = ({ langMode }) => {
               </div>
             </div>
 
-            {/* Custom selector indicator */}
             <div className="text-center md:text-left mt-4 md:mt-0">
               <button 
                 onClick={() => setDateRangeType('custom')}
@@ -364,7 +354,6 @@ export const Reports: React.FC<ReportsProps> = ({ langMode }) => {
               </button>
             </div>
 
-            {/* Custom Dates Inputs */}
             {dateRangeType === 'custom' && (
               <>
                 <div className="space-y-1">
@@ -428,7 +417,7 @@ export const Reports: React.FC<ReportsProps> = ({ langMode }) => {
       <div id="report-table-printable" className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           {reportType === 'sales' && (
-            <table className="w-full text-left border-collapse text-xs text-slate-600">
+            <table className="w-full text-left border-collapse text-xs text-slate-650">
               <thead>
                 <tr className="bg-slate-50 border-b font-bold text-slate-400 uppercase tracking-wider">
                   <th className="px-6 py-4">Invoice No</th>
@@ -461,7 +450,7 @@ export const Reports: React.FC<ReportsProps> = ({ langMode }) => {
           )}
 
           {reportType === 'purchases' && (
-            <table className="w-full text-left border-collapse text-xs text-slate-600">
+            <table className="w-full text-left border-collapse text-xs text-slate-650">
               <thead>
                 <tr className="bg-slate-50 border-b font-bold text-slate-400 uppercase tracking-wider">
                   <th className="px-6 py-4">Purchase Date</th>
@@ -492,7 +481,7 @@ export const Reports: React.FC<ReportsProps> = ({ langMode }) => {
           )}
 
           {reportType === 'profit' && (
-            <table className="w-full text-left border-collapse text-xs text-slate-600">
+            <table className="w-full text-left border-collapse text-xs text-slate-655">
               <thead>
                 <tr className="bg-slate-50 border-b font-bold text-slate-400 uppercase tracking-wider">
                   <th className="px-6 py-4">Invoice No</th>
@@ -525,7 +514,7 @@ export const Reports: React.FC<ReportsProps> = ({ langMode }) => {
           )}
 
           {reportType === 'stock' && (
-            <table className="w-full text-left border-collapse text-xs text-slate-600">
+            <table className="w-full text-left border-collapse text-xs text-slate-650">
               <thead>
                 <tr className="bg-slate-50 border-b font-bold text-slate-400 uppercase tracking-wider">
                   <th className="px-6 py-4">Product Name</th>
@@ -563,7 +552,7 @@ export const Reports: React.FC<ReportsProps> = ({ langMode }) => {
           )}
 
           {reportType === 'category' && (
-            <table className="w-full text-left border-collapse text-xs text-slate-600">
+            <table className="w-full text-left border-collapse text-xs text-slate-650">
               <thead>
                 <tr className="bg-slate-50 border-b font-bold text-slate-400 uppercase tracking-wider">
                   <th className="px-6 py-4">Category Name</th>

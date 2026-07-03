@@ -1,7 +1,34 @@
-// Database interfaces & LocalStorage Management for Umiya Inventory Management System
+// Multi-Tenant Database & LocalStorage Management for Umiya SaaS
+import { isSupabaseConfigured } from './supabase';
+
+export interface User {
+  id: string; // matches shop_id
+  email: string;
+  password_hash: string;
+  shop_name: string;
+  owner_name: string;
+  mobile: string;
+  address: string;
+  role: 'SuperAdmin' | 'ShopOwner';
+  plan_type: 'Trial' | 'Monthly' | 'Quarterly' | 'Yearly';
+  plan_start: string;
+  plan_expiry: string;
+  status: 'Active' | 'Inactive' | 'Blocked';
+  gst_number?: string;
+  logo_url?: string;
+}
+
+export interface AuditLog {
+  id: string;
+  timestamp: string;
+  user_email: string;
+  action: string;
+  shop_id?: string;
+}
 
 export interface Product {
   id: string;
+  shop_id: string; // Tenant isolation key
   product_name: string;
   product_name_gu: string;
   category: string;
@@ -16,6 +43,7 @@ export interface Product {
 
 export interface Supplier {
   id: string;
+  shop_id: string; // Tenant isolation key
   supplier_name: string;
   mobile: string;
   address: string;
@@ -25,10 +53,11 @@ export interface Supplier {
 
 export interface Purchase {
   id: string;
-  purchase_date: string; // ISO date string
+  shop_id: string; // Tenant isolation key
+  purchase_date: string;
   supplier_name: string;
   product_id: string;
-  product_name: string; // snapshot for easy display
+  product_name: string;
   quantity: number;
   purchase_price: number;
   total_amount: number;
@@ -36,9 +65,10 @@ export interface Purchase {
 
 export interface Sale {
   id: string;
-  sale_date: string; // ISO date string
+  shop_id: string; // Tenant isolation key
+  sale_date: string;
   product_id: string;
-  product_name: string; // snapshot
+  product_name: string;
   quantity: number;
   sale_price: number;
   profit: number;
@@ -46,8 +76,10 @@ export interface Sale {
   invoice_number: string;
 }
 
-// Key names for local storage
+// LocalStorage Keys
 const KEYS = {
+  USERS: 'umiya_saas_users',
+  AUDIT_LOGS: 'umiya_saas_audit_logs',
   PRODUCTS: 'umiya_products',
   SUPPLIERS: 'umiya_suppliers',
   PURCHASES: 'umiya_purchases',
@@ -55,37 +87,74 @@ const KEYS = {
   SUPABASE_CONFIG: 'umiya_supabase_config'
 };
 
-// Initial Seed Data
-const DEFAULT_SUPPLIERS: Supplier[] = [
+// Seed Users List
+const SEED_USERS: User[] = [
   {
-    id: 'sup-1',
-    supplier_name: 'Mahalaxmi Agency (મહાલક્ષ્મી એજન્સી)',
+    id: 'admin',
+    email: 'admin@umiya.com',
+    password_hash: 'adminpassword', // In production, use standard crypto-pbkdf2 or Auth helper
+    shop_name: 'Umiya Super Admin Panel',
+    owner_name: 'Super Admin',
+    mobile: '9999999999',
+    address: 'Umiya Wholesale SaaS HQ, Gujarat',
+    role: 'SuperAdmin',
+    plan_type: 'Yearly',
+    plan_start: new Date().toISOString(),
+    plan_expiry: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
+    status: 'Active'
+  },
+  {
+    id: 'shop-1',
+    email: 'owner@umiya.com',
+    password_hash: 'ownerpassword',
+    shop_name: 'Umiya Wholesale Shop',
+    owner_name: 'Manthan Patel',
     mobile: '9876543210',
     address: 'APMC Market, Unjha, Gujarat',
-    gst_number: '24AAAAM1234A1Z1',
-    outstanding_payment: 25000
+    role: 'ShopOwner',
+    plan_type: 'Monthly',
+    plan_start: new Date().toISOString(),
+    plan_expiry: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(), // 1 year active
+    status: 'Active',
+    gst_number: '24UMIYA1234F1Z1'
   },
   {
-    id: 'sup-2',
-    supplier_name: 'Vardhman Distributors (વર્ધમાન ડિસ્ટ્રીબ્યુટર્સ)',
-    mobile: '9428512345',
-    address: 'Ring Road, Surat, Gujarat',
-    gst_number: '24BBBBM5678B2Z2',
-    outstanding_payment: 0
+    id: 'shop-2',
+    email: 'expired@umiya.com',
+    password_hash: 'expiredpassword',
+    shop_name: 'Expired Trial Mukhwas',
+    owner_name: 'Ketan Shah',
+    mobile: '9001002003',
+    address: 'Kalupur Market, Ahmedabad',
+    role: 'ShopOwner',
+    plan_type: 'Trial',
+    plan_start: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString(), // started 10 days ago
+    plan_expiry: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString(), // expired 3 days ago
+    status: 'Active',
+    gst_number: '24EXPIRED5678X9X'
   },
   {
-    id: 'sup-3',
-    supplier_name: 'Shreeji FMCG Supplier (શ્રીજી એફએમસીજી સપ્લાયર)',
-    mobile: '9909988776',
-    address: 'Kalupur, Ahmedabad, Gujarat',
-    gst_number: '24CCCCM9012C3Z3',
-    outstanding_payment: 12500
+    id: 'shop-3',
+    email: 'blocked@umiya.com',
+    password_hash: 'blockedpassword',
+    shop_name: 'Blocked Pan Masala Agency',
+    owner_name: 'Hitesh Thakkar',
+    mobile: '9428500000',
+    address: 'Ring Road, Surat',
+    role: 'ShopOwner',
+    plan_type: 'Yearly',
+    plan_start: new Date().toISOString(),
+    plan_expiry: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
+    status: 'Blocked',
+    gst_number: '24BLOCKED0000C1Z1'
   }
 ];
 
+// Seed initial products tagged with 'shop-1' (the active test owner)
 const DEFAULT_PRODUCTS: Product[] = [
   {
     id: 'prod-1',
+    shop_id: 'shop-1',
     product_name: 'Vimal Shaheed Pan Masala',
     product_name_gu: 'વિમલ પાન મસાલા',
     category: 'Pan Masala',
@@ -99,6 +168,7 @@ const DEFAULT_PRODUCTS: Product[] = [
   },
   {
     id: 'prod-2',
+    shop_id: 'shop-1',
     product_name: 'Rajnigandha Pan Masala',
     product_name_gu: 'રજનીગંધા પાન મસાલા',
     category: 'Pan Masala',
@@ -112,32 +182,35 @@ const DEFAULT_PRODUCTS: Product[] = [
   },
   {
     id: 'prod-3',
+    shop_id: 'shop-1',
     product_name: 'Tulsi Mix Mukhwas',
     product_name_gu: 'તુલસી મિક્સ મુખવાસ',
     category: 'Mukhwas',
     brand: 'Tulsi',
     purchase_price: 45,
     selling_price: 60,
-    stock_quantity: 15, // Low stock!
+    stock_quantity: 15,
     unit: 'Packet',
     minimum_stock: 30,
     barcode: '8901234567892'
   },
   {
     id: 'prod-4',
+    shop_id: 'shop-1',
     product_name: 'Cadbury Dairy Milk Silk',
     product_name_gu: 'ડેરી મિલ્ક સિલ્ક',
     category: 'Chocolate',
     brand: 'Cadbury',
     purchase_price: 70,
     selling_price: 80,
-    stock_quantity: 9, // Low stock!
+    stock_quantity: 9,
     unit: 'Piece',
     minimum_stock: 15,
     barcode: '8901234567893'
   },
   {
     id: 'prod-5',
+    shop_id: 'shop-1',
     product_name: 'Classic Gold Flake Cigarette',
     product_name_gu: 'ક્લાસિક ગોલ્ડ ફ્લેક સિગારેટ',
     category: 'Cigarettes',
@@ -148,182 +221,95 @@ const DEFAULT_PRODUCTS: Product[] = [
     unit: 'Bundle',
     minimum_stock: 20,
     barcode: '8901234567894'
-  },
-  {
-    id: 'prod-6',
-    product_name: 'Parle-G Gold Biscuits',
-    product_name_gu: 'પાર્લે-જી ગોલ્ડ બિસ્કીટ',
-    category: 'General FMCG',
-    brand: 'Parle',
-    purchase_price: 90,
-    selling_price: 100,
-    stock_quantity: 220,
-    unit: 'Box',
-    minimum_stock: 50,
-    barcode: '8901234567895'
-  },
-  {
-    id: 'prod-7',
-    product_name: 'Jeera Goli Premium Mukhwas',
-    product_name_gu: 'જીરા ગોળી મુખવાસ',
-    category: 'Mukhwas',
-    brand: 'Local',
-    purchase_price: 25,
-    selling_price: 35,
-    stock_quantity: 150,
-    unit: 'Packet',
-    minimum_stock: 20,
-    barcode: '8901234567896'
   }
 ];
 
-// Seed purchases and sales for the past few days to make analytics charts look real
-const getSeedPurchases = (): Purchase[] => {
-  const dates = getPastDates(7);
-  return [
-    {
-      id: 'pur-1',
-      purchase_date: `${dates[5]}T10:30:00Z`,
-      supplier_name: 'Mahalaxmi Agency (મહાલક્ષ્મી એજન્સી)',
-      product_id: 'prod-1',
-      product_name: 'Vimal Shaheed Pan Masala',
-      quantity: 100,
-      purchase_price: 120,
-      total_amount: 12000
-    },
-    {
-      id: 'pur-2',
-      purchase_date: `${dates[3]}T11:15:00Z`,
-      supplier_name: 'Vardhman Distributors (વર્ધમાન ડિસ્ટ્રીબ્યુટર્સ)',
-      product_id: 'prod-5',
-      product_name: 'Classic Gold Flake Cigarette',
-      quantity: 50,
-      purchase_price: 320,
-      total_amount: 16000
-    },
-    {
-      id: 'pur-3',
-      purchase_date: `${dates[1]}T15:45:00Z`,
-      supplier_name: 'Shreeji FMCG Supplier (શ્રીજી એફએમસીજી સપ્લાયર)',
-      product_id: 'prod-6',
-      product_name: 'Parle-G Gold Biscuits',
-      quantity: 150,
-      purchase_price: 90,
-      total_amount: 13500
-    }
-  ];
-};
+const DEFAULT_SUPPLIERS: Supplier[] = [
+  {
+    id: 'sup-1',
+    shop_id: 'shop-1',
+    supplier_name: 'Mahalaxmi Agency (મહાલક્ષ્મી એજન્સી)',
+    mobile: '9876543210',
+    address: 'APMC Market, Unjha, Gujarat',
+    gst_number: '24AAAAM1234A1Z1',
+    outstanding_payment: 25000
+  },
+  {
+    id: 'sup-2',
+    shop_id: 'shop-1',
+    supplier_name: 'Vardhman Distributors (વર્ધમાન ડિસ્ટ્રીબ્યુટર્સ)',
+    mobile: '9428512345',
+    address: 'Ring Road, Surat, Gujarat',
+    gst_number: '24BBBBM5678B2Z2',
+    outstanding_payment: 0
+  }
+];
 
-const getSeedSales = (): Sale[] => {
-  const dates = getPastDates(7);
-  return [
-    {
-      id: 'sale-1',
-      sale_date: `${dates[6]}T11:20:00Z`,
-      product_id: 'prod-1',
-      product_name: 'Vimal Shaheed Pan Masala',
-      quantity: 20,
-      sale_price: 140,
-      profit: (140 - 120) * 20, // 400
-      customer_name: 'Ramesh Patel',
-      invoice_number: 'INV-2026-0001'
-    },
-    {
-      id: 'sale-2',
-      sale_date: `${dates[5]}T14:40:00Z`,
-      product_id: 'prod-2',
-      product_name: 'Rajnigandha Pan Masala',
-      quantity: 10,
-      sale_price: 390,
-      profit: (390 - 350) * 10, // 400
-      customer_name: 'Hitesh Kirana Store',
-      invoice_number: 'INV-2026-0002'
-    },
-    {
-      id: 'sale-3',
-      sale_date: `${dates[4]}T10:15:00Z`,
-      product_id: 'prod-6',
-      product_name: 'Parle-G Gold Biscuits',
-      quantity: 50,
-      sale_price: 100,
-      profit: (100 - 90) * 50, // 500
-      customer_name: 'Krishna Provision Store',
-      invoice_number: 'INV-2026-0003'
-    },
-    {
-      id: 'sale-4',
-      sale_date: `${dates[3]}T16:30:00Z`,
-      product_id: 'prod-5',
-      product_name: 'Classic Gold Flake Cigarette',
-      quantity: 15,
-      sale_price: 360,
-      profit: (360 - 320) * 15, // 600
-      customer_name: 'Jay Ambe Pan House',
-      invoice_number: 'INV-2026-0004'
-    },
-    {
-      id: 'sale-5',
-      sale_date: `${dates[2]}T09:10:00Z`,
-      product_id: 'prod-3',
-      product_name: 'Tulsi Mix Mukhwas',
-      quantity: 40,
-      sale_price: 60,
-      profit: (60 - 45) * 40, // 600
-      customer_name: 'Ketan Pan Corner',
-      invoice_number: 'INV-2026-0005'
-    },
-    {
-      id: 'sale-6',
-      sale_date: `${dates[1]}T17:00:00Z`,
-      product_id: 'prod-1',
-      product_name: 'Vimal Shaheed Pan Masala',
-      quantity: 35,
-      sale_price: 140,
-      profit: (140 - 120) * 35, // 700
-      customer_name: 'Shreeji Pan & Mukhwas',
-      invoice_number: 'INV-2026-0006'
-    },
-    {
-      id: 'sale-7',
-      sale_date: `${dates[0]}T12:00:00Z`, // Today
-      product_id: 'prod-2',
-      product_name: 'Rajnigandha Pan Masala',
-      quantity: 5,
-      sale_price: 390,
-      profit: (390 - 350) * 5, // 200
-      customer_name: 'Dilip General Store',
-      invoice_number: 'INV-2026-0007'
-    },
-    {
-      id: 'sale-8',
-      sale_date: `${dates[0]}T14:30:00Z`, // Today
-      product_id: 'prod-7',
-      product_name: 'Jeera Goli Premium Mukhwas',
-      quantity: 30,
-      sale_price: 35,
-      profit: (35 - 25) * 30, // 300
-      customer_name: 'Gaurav Traders',
-      invoice_number: 'INV-2026-0008'
-    }
-  ];
-};
-
-function getPastDates(days: number): string[] {
+const getPastDates = (days: number): string[] => {
   const list = [];
   for (let i = 0; i < days; i++) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    // Format YYYY-MM-DD
     const yyyy = d.getFullYear();
     const mm = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');
     list.push(`${yyyy}-${mm}-${dd}`);
   }
   return list;
-}
+};
 
-// Database Init function
+const getSeedPurchases = (): Purchase[] => {
+  const dates = getPastDates(5);
+  return [
+    {
+      id: 'pur-1',
+      shop_id: 'shop-1',
+      purchase_date: `${dates[3]}T10:30:00Z`,
+      supplier_name: 'Mahalaxmi Agency (મહાલક્ષ્મી એજન્સી)',
+      product_id: 'prod-1',
+      product_name: 'Vimal Shaheed Pan Masala',
+      quantity: 100,
+      purchase_price: 120,
+      total_amount: 12000
+    }
+  ];
+};
+
+const getSeedSales = (): Sale[] => {
+  const dates = getPastDates(5);
+  return [
+    {
+      id: 'sale-1',
+      shop_id: 'shop-1',
+      sale_date: `${dates[2]}T11:20:00Z`,
+      product_id: 'prod-1',
+      product_name: 'Vimal Shaheed Pan Masala',
+      quantity: 20,
+      sale_price: 140,
+      profit: 400,
+      customer_name: 'Ramesh Patel',
+      invoice_number: 'INV-2026-0001'
+    },
+    {
+      id: 'sale-2',
+      shop_id: 'shop-1',
+      sale_date: `${dates[0]}T12:00:00Z`, // Today
+      product_id: 'prod-2',
+      product_name: 'Rajnigandha Pan Masala',
+      quantity: 5,
+      sale_price: 390,
+      profit: 200,
+      customer_name: 'Dilip General Store',
+      invoice_number: 'INV-2026-0002'
+    }
+  ];
+};
+
+// Database Init
 export const initializeDB = () => {
+  if (!localStorage.getItem(KEYS.USERS)) {
+    localStorage.setItem(KEYS.USERS, JSON.stringify(SEED_USERS));
+  }
   if (!localStorage.getItem(KEYS.PRODUCTS)) {
     localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(DEFAULT_PRODUCTS));
   }
@@ -336,125 +322,207 @@ export const initializeDB = () => {
   if (!localStorage.getItem(KEYS.SALES)) {
     localStorage.setItem(KEYS.SALES, JSON.stringify(getSeedSales()));
   }
+  if (!localStorage.getItem(KEYS.AUDIT_LOGS)) {
+    // Seed initial login audit log
+    localStorage.setItem(KEYS.AUDIT_LOGS, JSON.stringify([
+      {
+        id: 'log-1',
+        timestamp: new Date(Date.now() - 600000).toISOString(),
+        user_email: 'owner@umiya.com',
+        action: 'System Seed Initialized',
+        shop_id: 'shop-1'
+      }
+    ]));
+  }
 };
 
-// Database Getter and Setter wrappers
+// Unified DB API
 export const db = {
-  getProducts: (): Product[] => {
+  // USER / PLAN MANAGEMENT (SaaS Super Admin)
+  getUsers: (): User[] => {
     initializeDB();
-    return JSON.parse(localStorage.getItem(KEYS.PRODUCTS) || '[]');
+    return JSON.parse(localStorage.getItem(KEYS.USERS) || '[]');
   },
-  
-  saveProduct: (product: Product): Product[] => {
-    const products = db.getProducts();
-    const index = products.findIndex(p => p.id === product.id);
+
+  saveUser: (user: User): User[] => {
+    const users = db.getUsers();
+    const index = users.findIndex(u => u.id === user.id || u.email === user.email);
     if (index > -1) {
-      products[index] = product;
+      users[index] = { ...users[index], ...user };
     } else {
-      products.push(product);
+      users.push(user);
     }
-    localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(products));
-    return products;
+    localStorage.setItem(KEYS.USERS, JSON.stringify(users));
+    return users;
   },
 
-  deleteProduct: (id: string): Product[] => {
-    const products = db.getProducts().filter(p => p.id !== id);
-    localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(products));
-    return products;
+  deleteUser: (id: string): User[] => {
+    const users = db.getUsers().filter(u => u.id !== id);
+    localStorage.setItem(KEYS.USERS, JSON.stringify(users));
+    return users;
   },
 
-  getSuppliers: (): Supplier[] => {
+  // AUDIT LOG MANAGEMENT
+  getAuditLogs: (): AuditLog[] => {
     initializeDB();
-    return JSON.parse(localStorage.getItem(KEYS.SUPPLIERS) || '[]');
+    return JSON.parse(localStorage.getItem(KEYS.AUDIT_LOGS) || '[]');
   },
 
-  saveSupplier: (supplier: Supplier): Supplier[] => {
-    const suppliers = db.getSuppliers();
-    const index = suppliers.findIndex(s => s.id === supplier.id);
+  addAuditLog: (email: string, action: string, shop_id?: string) => {
+    const logs = db.getAuditLogs();
+    const newLog: AuditLog = {
+      id: `log-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      user_email: email,
+      action,
+      shop_id
+    };
+    logs.unshift(newLog); // Newest first
+    localStorage.setItem(KEYS.AUDIT_LOGS, JSON.stringify(logs));
+  },
+
+  // PRODUCTS (Filtered by tenant)
+  getProducts: (shop_id: string): Product[] => {
+    initializeDB();
+    const allProducts: Product[] = JSON.parse(localStorage.getItem(KEYS.PRODUCTS) || '[]');
+    return allProducts.filter(p => p.shop_id === shop_id);
+  },
+
+  saveProduct: (product: Product, shop_id: string): Product[] => {
+    initializeDB();
+    const allProducts: Product[] = JSON.parse(localStorage.getItem(KEYS.PRODUCTS) || '[]');
+    const index = allProducts.findIndex(p => p.id === product.id && p.shop_id === shop_id);
+    
+    const productPayload = { ...product, shop_id };
     if (index > -1) {
-      suppliers[index] = supplier;
+      allProducts[index] = productPayload;
+      db.addAuditLog(product.shop_id, `Product Edited: ${product.product_name}`, shop_id);
     } else {
-      suppliers.push(supplier);
+      allProducts.push(productPayload);
+      db.addAuditLog(product.shop_id, `Product Added: ${product.product_name}`, shop_id);
     }
-    localStorage.setItem(KEYS.SUPPLIERS, JSON.stringify(suppliers));
-    return suppliers;
+    localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(allProducts));
+    return allProducts.filter(p => p.shop_id === shop_id);
   },
 
-  deleteSupplier: (id: string): Supplier[] => {
-    const suppliers = db.getSuppliers().filter(s => s.id !== id);
-    localStorage.setItem(KEYS.SUPPLIERS, JSON.stringify(suppliers));
-    return suppliers;
-  },
-
-  getPurchases: (): Purchase[] => {
+  deleteProduct: (id: string, shop_id: string): Product[] => {
     initializeDB();
-    return JSON.parse(localStorage.getItem(KEYS.PURCHASES) || '[]');
+    const allProducts: Product[] = JSON.parse(localStorage.getItem(KEYS.PRODUCTS) || '[]');
+    const target = allProducts.find(p => p.id === id && p.shop_id === shop_id);
+    if (target) {
+      db.addAuditLog(shop_id, `Product Deleted: ${target.product_name}`, shop_id);
+    }
+    const filtered = allProducts.filter(p => !(p.id === id && p.shop_id === shop_id));
+    localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(filtered));
+    return filtered.filter(p => p.shop_id === shop_id);
   },
 
-  addPurchase: (purchase: Omit<Purchase, 'id'>): Purchase => {
-    const purchases = db.getPurchases();
+  // SUPPLIERS (Filtered by tenant)
+  getSuppliers: (shop_id: string): Supplier[] => {
+    initializeDB();
+    const allSuppliers: Supplier[] = JSON.parse(localStorage.getItem(KEYS.SUPPLIERS) || '[]');
+    return allSuppliers.filter(s => s.shop_id === shop_id);
+  },
+
+  saveSupplier: (supplier: Supplier, shop_id: string): Supplier[] => {
+    initializeDB();
+    const allSuppliers: Supplier[] = JSON.parse(localStorage.getItem(KEYS.SUPPLIERS) || '[]');
+    const index = allSuppliers.findIndex(s => s.id === supplier.id && s.shop_id === shop_id);
+    
+    const supplierPayload = { ...supplier, shop_id };
+    if (index > -1) {
+      allSuppliers[index] = supplierPayload;
+    } else {
+      allSuppliers.push(supplierPayload);
+    }
+    localStorage.setItem(KEYS.SUPPLIERS, JSON.stringify(allSuppliers));
+    return allSuppliers.filter(s => s.shop_id === shop_id);
+  },
+
+  deleteSupplier: (id: string, shop_id: string): Supplier[] => {
+    initializeDB();
+    const allSuppliers: Supplier[] = JSON.parse(localStorage.getItem(KEYS.SUPPLIERS) || '[]');
+    const filtered = allSuppliers.filter(s => !(s.id === id && s.shop_id === shop_id));
+    localStorage.setItem(KEYS.SUPPLIERS, JSON.stringify(filtered));
+    return filtered.filter(s => s.shop_id === shop_id);
+  },
+
+  // PURCHASES (Filtered by tenant)
+  getPurchases: (shop_id: string): Purchase[] => {
+    initializeDB();
+    const allPurchases: Purchase[] = JSON.parse(localStorage.getItem(KEYS.PURCHASES) || '[]');
+    return allPurchases.filter(p => p.shop_id === shop_id);
+  },
+
+  addPurchase: (purchase: Omit<Purchase, 'id' | 'shop_id'>, shop_id: string): Purchase => {
+    initializeDB();
+    const allPurchases: Purchase[] = JSON.parse(localStorage.getItem(KEYS.PURCHASES) || '[]');
     const newPurchase: Purchase = {
       ...purchase,
-      id: `pur-${Date.now()}`
+      id: `pur-${Date.now()}`,
+      shop_id
     };
-    purchases.unshift(newPurchase); // newest first
-    localStorage.setItem(KEYS.PURCHASES, JSON.stringify(purchases));
+    allPurchases.unshift(newPurchase);
+    localStorage.setItem(KEYS.PURCHASES, JSON.stringify(allPurchases));
 
-    // Update Product Stock
-    const products = db.getProducts();
-    const product = products.find(p => p.id === purchase.product_id);
-    if (product) {
-      product.stock_quantity += purchase.quantity;
-      db.saveProduct(product);
+    // Increment Stock
+    const shopProducts = db.getProducts(shop_id);
+    const prod = shopProducts.find(p => p.id === purchase.product_id);
+    if (prod) {
+      prod.stock_quantity += purchase.quantity;
+      db.saveProduct(prod, shop_id);
     }
-    
+
+    db.addAuditLog(shop_id, `Purchase Created: ${purchase.product_name} (${purchase.quantity} units)`, shop_id);
     return newPurchase;
   },
 
-  getSales: (): Sale[] => {
+  // SALES (Filtered by tenant)
+  getSales: (shop_id: string): Sale[] => {
     initializeDB();
-    return JSON.parse(localStorage.getItem(KEYS.SALES) || '[]');
+    const allSales: Sale[] = JSON.parse(localStorage.getItem(KEYS.SALES) || '[]');
+    return allSales.filter(s => s.shop_id === shop_id);
   },
 
-  addSale: (sale: Omit<Sale, 'id' | 'profit' | 'invoice_number'>): Sale => {
-    const sales = db.getSales();
-    const products = db.getProducts();
-    const product = products.find(p => p.id === sale.product_id);
-    
-    if (!product) {
-      throw new Error("Product not found");
+  addSale: (sale: Omit<Sale, 'id' | 'shop_id' | 'profit' | 'invoice_number'>, shop_id: string): Sale => {
+    initializeDB();
+    const allSales: Sale[] = JSON.parse(localStorage.getItem(KEYS.SALES) || '[]');
+    const shopProducts = db.getProducts(shop_id);
+    const prod = shopProducts.find(p => p.id === sale.product_id);
+
+    if (!prod) throw new Error("Product not found");
+    if (prod.stock_quantity < sale.quantity) {
+      throw new Error(`Insufficient stock. Available: ${prod.stock_quantity}`);
     }
 
-    if (product.stock_quantity < sale.quantity) {
-      throw new Error(`Insufficient stock. Available: ${product.stock_quantity}`);
-    }
-
-    // Profit = (selling_price - purchase_price) * quantity
-    const unitProfit = sale.sale_price - product.purchase_price;
+    // Profit = (selling - purchase) * qty
+    const unitProfit = sale.sale_price - prod.purchase_price;
     const totalProfit = unitProfit * sale.quantity;
 
-    // Generate Invoice Number
-    const invCount = sales.length + 1;
-    const invNumber = `INV-${new Date().getFullYear()}-${String(invCount).padStart(4, '0')}`;
+    // Invoice No
+    const tenantSalesCount = allSales.filter(s => s.shop_id === shop_id).length + 1;
+    const invNumber = `INV-${new Date().getFullYear()}-${String(tenantSalesCount).padStart(4, '0')}`;
 
     const newSale: Sale = {
       ...sale,
       id: `sale-${Date.now()}`,
+      shop_id,
       profit: totalProfit,
       invoice_number: invNumber
     };
 
-    sales.unshift(newSale); // newest first
-    localStorage.setItem(KEYS.SALES, JSON.stringify(sales));
+    allSales.unshift(newSale);
+    localStorage.setItem(KEYS.SALES, JSON.stringify(allSales));
 
-    // Deduct Product Stock
-    product.stock_quantity -= sale.quantity;
-    db.saveProduct(product);
+    // Deduct stock
+    prod.stock_quantity -= sale.quantity;
+    db.saveProduct(prod, shop_id);
 
+    db.addAuditLog(shop_id, `Sale Bill Created: ${invNumber} (${sale.quantity} units)`, shop_id);
     return newSale;
   },
 
-  // Configuration for real Supabase keys (allows entering them in Settings UI)
+  // Supabase connection
   getSupabaseConfig: () => {
     const config = localStorage.getItem(KEYS.SUPABASE_CONFIG);
     return config ? JSON.parse(config) : { url: '', key: '' };
