@@ -45,7 +45,14 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode, curren
     return new Date(currentUser.plan_expiry) < new Date();
   }, [currentUser.plan_expiry]);
 
-  const categories = ['Pan Masala', 'Mukhwas', 'Chocolate', 'Cigarettes', 'General FMCG'];
+  const categories = useMemo(() => {
+    const list = new Set<string>();
+    products.forEach(p => {
+      if (p.category) list.add(p.category);
+    });
+    ['Pan Masala', 'Mukhwas', 'Chocolate', 'Cigarettes', 'General FMCG'].forEach(c => list.add(c));
+    return Array.from(list);
+  }, [products]);
 
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
@@ -449,15 +456,19 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode, curren
 
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 uppercase">{t('category', langMode)}</label>
-                  <select
+                  <input
+                    type="text"
+                    list="modal-categories-list"
                     value={formCategory}
                     onChange={(e) => setFormCategory(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none"
-                  >
+                    placeholder="e.g. Pan Masala, Snacks..."
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500"
+                  />
+                  <datalist id="modal-categories-list">
                     {categories.map((c, idx) => (
-                      <option key={idx} value={c}>{c}</option>
+                      <option key={idx} value={c} />
                     ))}
-                  </select>
+                  </datalist>
                 </div>
 
                 <div className="space-y-1">

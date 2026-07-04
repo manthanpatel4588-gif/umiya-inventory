@@ -37,6 +37,21 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({ langMode, currentU
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
+  // Product Search State inside Form
+  const [productSearch, setProductSearch] = useState('');
+  const [isProductDropdownOpen, setIsProductDropdownOpen] = useState(false);
+
+  // Filter products for search
+  const filteredProductsForSelect = useMemo(() => {
+    if (!productSearch) return products;
+    return products.filter(p => 
+      p.product_name.toLowerCase().includes(productSearch.toLowerCase()) ||
+      p.product_name_gu.includes(productSearch) ||
+      (p.barcode && p.barcode.includes(productSearch)) ||
+      p.brand.toLowerCase().includes(productSearch.toLowerCase())
+    );
+  }, [products, productSearch]);
+
   // Expiry check
   const isExpired = useMemo(() => {
     return new Date(currentUser.plan_expiry) < new Date();
@@ -114,6 +129,7 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({ langMode, currentU
       setSelectedProductId('');
       setQuantity('');
       setPurchaseRate('');
+      setProductSearch('');
       
       setSuccessMsg(langMode === 'gu' ? 'ખરીદી સફળતાપૂર્વક નોંધાઈ ગઈ છે.' : 'Purchase successfully recorded and stock quantity incremented!');
       
@@ -218,24 +234,80 @@ export const PurchaseEntry: React.FC<PurchaseEntryProps> = ({ langMode, currentU
             </div>
 
             {/* Product Selector */}
-            <div className="space-y-1">
+            <div className="space-y-1 relative">
               <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
                 <Package className="w-3.5 h-3.5 text-slate-400" />
-                <span>{langMode === 'gu' ? 'ઉત્પાદન પસંદ કરો' : 'Select Product'}</span>
+                <span>{langMode === 'gu' ? 'ઉત્પાદન શોધો/પસંદ કરો' : 'Search/Select Product'}</span>
               </label>
-              <select
-                value={selectedProductId}
-                disabled={isExpired}
-                onChange={(e) => handleProductChange(e.target.value)}
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                <option value="">{langMode === 'gu' ? '-- પસંદ કરો --' : '-- Choose Product --'}</option>
-                {products.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.product_name} / {p.product_name_gu} ({p.unit})
-                  </option>
-                ))}
-              </select>
+              
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder={langMode === 'gu' ? 'નામ લખો અથવા બારકોડ સ્કેન કરો...' : 'Type name or scan barcode...'}
+                  value={productSearch}
+                  disabled={isExpired}
+                  onFocus={() => setIsProductDropdownOpen(true)}
+                  onChange={(e) => {
+                    setProductSearch(e.target.value);
+                    setSelectedProductId(''); // Reset until clicked
+                    setIsProductDropdownOpen(true);
+                  }}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
+                />
+                {selectedProductId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedProductId('');
+                      setProductSearch('');
+                      setPurchaseRate('');
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              {/* Dropdown suggestions list */}
+              {isProductDropdownOpen && !isExpired && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-10" 
+                    onClick={() => setIsProductDropdownOpen(false)} 
+                  />
+                  
+                  <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-56 overflow-y-auto divide-y divide-slate-100">
+                    {filteredProductsForSelect.length === 0 ? (
+                      <div className="p-3 text-xs text-slate-400 text-center font-semibold">
+                        No products found / કોઈ ઉત્પાદન મળ્યું નથી
+                      </div>
+                    ) : (
+                      filteredProductsForSelect.map(p => (
+                        <button
+                          type="button"
+                          key={p.id}
+                          onClick={() => {
+                            setSelectedProductId(p.id);
+                            setProductSearch(`${p.product_name} / ${p.product_name_gu}`);
+                            setPurchaseRate(p.purchase_price.toString());
+                            setIsProductDropdownOpen(false);
+                          }}
+                          className="w-full text-left p-3 hover:bg-slate-50 flex justify-between items-center text-xs font-semibold"
+                        >
+                          <div className="flex flex-col">
+                            <span className="text-slate-800">{p.product_name}</span>
+                            <span className="text-[10px] text-slate-400 font-normal">{p.product_name_gu}</span>
+                          </div>
+                          <span className="text-[10px] bg-slate-100 text-slate-650 px-2 py-0.5 rounded-full font-bold">
+                            {p.stock_quantity} {p.unit}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Qty & Rate Row */}
