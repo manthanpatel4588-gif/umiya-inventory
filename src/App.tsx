@@ -249,6 +249,23 @@ function App() {
           </div>
 
           <div className="flex items-center gap-4 text-xs font-semibold">
+            {/* Mobile-Friendly Language Selector */}
+            <div className="flex bg-slate-105 p-0.5 rounded-lg border border-slate-200 text-[10px] sm:text-xs">
+              {(['en', 'gu', 'dual'] as LanguageMode[]).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => setLangMode(mode)}
+                  className={`px-2 py-0.5 rounded font-bold text-center transition-all ${
+                    langMode === mode 
+                      ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-sm' 
+                      : 'text-slate-500 hover:bg-slate-200'
+                  }`}
+                >
+                  {mode === 'en' ? 'EN' : mode === 'gu' ? 'ગુજ' : 'DUAL'}
+                </button>
+              ))}
+            </div>
+
             {/* Database status */}
             <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border ${
               isSupabaseConfigured() 
