@@ -36,9 +36,10 @@ export interface Product {
   purchase_price: number;
   selling_price: number;
   stock_quantity: number;
-  unit: 'Packet' | 'Box' | 'Bundle' | 'Piece';
+  unit: 'Packet' | 'Box' | 'Bundle' | 'Piece' | 'Kg' | 'Gram' | 'Litre' | 'Dozen' | 'Bag' | 'Carton';
   minimum_stock: number;
   barcode?: string;
+  gst_rate?: number; // GST rate percentage (e.g. 0, 5, 12, 18)
 }
 
 export interface Supplier {
@@ -541,7 +542,7 @@ export const db = {
     return allSales.filter(s => s.shop_id === shop_id);
   },
 
-  addSale: (sale: Omit<Sale, 'id' | 'shop_id' | 'profit' | 'invoice_number'>, shop_id: string): Sale => {
+  addSale: (sale: Omit<Sale, 'id' | 'shop_id' | 'profit' | 'invoice_number'> & { invoice_number?: string }, shop_id: string): Sale => {
     initializeDB();
     const allSales: Sale[] = JSON.parse(localStorage.getItem(KEYS.SALES) || '[]');
     const shopProducts = db.getProducts(shop_id);
@@ -557,12 +558,16 @@ export const db = {
     const totalProfit = unitProfit * sale.quantity;
 
     // Invoice No
-    const tenantSalesCount = allSales.filter(s => s.shop_id === shop_id).length + 1;
-    const invNumber = `INV-${new Date().getFullYear()}-${String(tenantSalesCount).padStart(4, '0')}`;
+    let invNumber = sale.invoice_number;
+    if (!invNumber) {
+      const uniqueInvoiceNumbers = new Set(allSales.filter(s => s.shop_id === shop_id).map(s => s.invoice_number));
+      const tenantSalesCount = uniqueInvoiceNumbers.size + 1;
+      invNumber = `INV-${new Date().getFullYear()}-${String(tenantSalesCount).padStart(4, '0')}`;
+    }
 
     const newSale: Sale = {
       ...sale,
-      id: `sale-${Date.now()}`,
+      id: `sale-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       shop_id,
       profit: totalProfit,
       invoice_number: invNumber

@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { X, Printer, Share2, FileText } from 'lucide-react';
-import { Sale, Product } from '../database/db';
+import { Sale, db } from '../database/db';
 import { LanguageMode } from '../utils/translations';
 
 interface InvoiceModalProps {
   sale: Sale | null;
-  product: Product | null;
+  product: any | null; // unused fallback
   isOpen: boolean;
   onClose: () => void;
   langMode: LanguageMode;
@@ -13,51 +13,96 @@ interface InvoiceModalProps {
 
 export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   sale,
-  product,
   isOpen,
   onClose,
   langMode
 }) => {
   if (!isOpen || !sale) return null;
 
-  // Invoice Date formatting
+  // 1. Fetch all items (sales) associated with this invoice number for the shop
+  const invoiceItems = useMemo(() => {
+    const allSales = db.getSales(sale.shop_id);
+    return allSales.filter(s => s.invoice_number === sale.invoice_number);
+  }, [sale]);
+
+  // 2. Fetch the active Tenant User info for billing header parameters
+  const shopProfile = useMemo(() => {
+    const users = db.getUsers();
+    return users.find(u => u.id === sale.shop_id) || null;
+  }, [sale]);
+
+  // 3. Format Date/Time
   const formattedDate = new Date(sale.sale_date).toLocaleDateString(
     langMode === 'gu' ? 'gu-IN' : 'en-US',
     { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }
   );
 
-  const itemTotal = sale.quantity * sale.sale_price;
+  // 4. Calculate Cart Totals & GST breakouts
+  const invoiceTotals = useMemo(() => {
+    let grandTotal = 0;
+    let totalTax = 0;
+    
+    // We lookup each product dynamically to grab their units and GST rates
+    const shopProducts = db.getProducts(sale.shop_id);
+    const itemDetails = invoiceItems.map(item => {
+      const prod = shopProducts.find(p => p.id === item.product_id);
+      const unit = prod?.unit || 'units';
+      const gstRate = prod?.gst_rate || 0;
+      
+      const total = item.quantity * item.sale_price;
+      const base = total / (1 + gstRate / 100);
+      const tax = total - base;
+
+      grandTotal += total;
+      totalTax += tax;
+
+      return {
+        ...item,
+        unit,
+        gstRate,
+        total,
+        tax
+      };
+    });
+
+    return {
+      items: itemDetails,
+      grandTotal,
+      cgst: totalTax / 2,
+      sgst: totalTax / 2
+    };
+  }, [invoiceItems, sale]);
 
   // Print Action
   const handlePrint = () => {
-    // We create a temporary element or use the media query print setup
-    // For React SPA, the easiest way to print a specific component is to copy it to a print div, 
-    // trigger print, and clean up. 
-    // In index.css, we configured '#print-root' to be visible, while body > * is hidden.
     const printRoot = document.createElement('div');
     printRoot.id = 'print-root';
     printRoot.innerHTML = document.getElementById('printable-invoice-content')?.innerHTML || '';
     document.body.appendChild(printRoot);
     
     window.print();
-    
     document.body.removeChild(printRoot);
   };
 
   // WhatsApp Share Builder
   const handleWhatsAppShare = () => {
-    const textMsg = `*UMIYA INVENTORY MANAGEMENT SYSTEM*
+    let itemsText = '';
+    invoiceTotals.items.forEach(item => {
+      itemsText += `- ${item.product_name}\n  ${item.quantity} ${item.unit} x ₹${item.sale_price.toFixed(2)} = *₹${item.total.toFixed(2)}*\n`;
+    });
+
+    const textMsg = `*${shopProfile?.shop_name.toUpperCase() || 'INVOICE BILL'}*
 ---------------------------------------
-*INVOICE BILL / બિલ*
+*INVOICE BILL / બીલ*
 *Invoice No:* ${sale.invoice_number}
 *Date:* ${new Date(sale.sale_date).toLocaleDateString('en-IN')}
 *Customer:* ${sale.customer_name || 'Walk-in Customer'}
 ---------------------------------------
 *Items / વિગતો:*
-- ${sale.product_name}
-  ${sale.quantity} ${product?.unit || 'units'} x ₹${sale.sale_price.toFixed(2)} = *₹${itemTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}*
----------------------------------------
-*GRAND TOTAL:* *₹${itemTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}*
+${itemsText}---------------------------------------
+*GST CGST (9%):* ₹${invoiceTotals.cgst.toFixed(2)}
+*GST SGST (9%):* ₹${invoiceTotals.sgst.toFixed(2)}
+*GRAND TOTAL:* *₹${invoiceTotals.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}*
 ---------------------------------------
 Thank you for your business!
 પધારવા બદલ આભાર! 🙏`;
@@ -83,28 +128,31 @@ Thank you for your business!
           </h3>
           <button 
             onClick={onClose}
-            className="p-1 bg-white hover:bg-slate-100 rounded-lg border border-slate-200 text-slate-400 hover:text-slate-600 transition-colors"
+            className="p-1 bg-white hover:bg-slate-100 rounded-lg border border-slate-200 text-slate-400 hover:text-slate-655 transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* PRINT CONTAINER (Hidden in web, displayed when print triggers) */}
-        <div id="printable-invoice-content" className="p-8 space-y-6">
+        {/* PRINT CONTAINER (Grouped multi-item receipt) */}
+        <div id="printable-invoice-content" className="p-8 space-y-6 max-h-[70vh] overflow-y-auto print:max-h-none print:overflow-visible">
           
           {/* Invoice Header */}
           <div className="text-center space-y-1 pb-4 border-b border-dashed border-slate-200">
-            <h2 className="text-xl font-black text-slate-800 tracking-tight">
-              UMIYA INVENTORY MANAGEMENT SYSTEM
+            {shopProfile?.logo_url && (
+              <img src={shopProfile.logo_url} alt="Logo" className="w-12 h-12 rounded object-cover mx-auto mb-2 border shadow-sm" />
+            )}
+            <h2 className="text-lg font-black text-slate-800 tracking-tight">
+              {shopProfile?.shop_name || 'UMIYA INVENTORY SYSTEM'}
             </h2>
             <p className="text-xs text-slate-500 font-semibold uppercase">
-              Pan Masala, Mukhwas & General FMCG Wholesale Shop
+              {shopProfile?.owner_name || 'Wholesale & General Store'}
             </p>
             <p className="text-[10px] text-slate-400">
-              APMC Market, Gujarat, India • GSTIN: 24UMIYA1234F1Z1
+              {shopProfile?.address || 'Gujarat, India'} {shopProfile?.gst_number ? `• GSTIN: ${shopProfile.gst_number}` : ''}
             </p>
             <p className="text-[10px] text-slate-400">
-              Mobile: +91 98765 43210
+              Mobile: +91 {shopProfile?.mobile}
             </p>
           </div>
 
@@ -120,42 +168,56 @@ Thank you for your business!
             </div>
           </div>
 
-          {/* Invoice Table */}
+          {/* Invoice Items Table */}
           <table className="w-full text-xs border-collapse">
             <thead>
-              <tr className="border-b-2 border-slate-800 font-bold text-slate-700 bg-slate-50/50">
+              <tr className="border-b-2 border-slate-800 font-bold text-slate-700 bg-slate-50/50 text-[10px] uppercase">
                 <th className="py-2 text-left">Item Details / વિગત</th>
                 <th className="py-2 text-center">Qty / જથ્થો</th>
                 <th className="py-2 text-right">Rate / દર</th>
+                <th className="py-2 text-right">GST %</th>
                 <th className="py-2 text-right">Total / રકમ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium text-slate-600">
-              <tr>
-                <td className="py-3">
-                  <p className="font-bold text-slate-800">{sale.product_name}</p>
-                  <p className="text-[10px] text-slate-400 font-normal">{product?.category || ''} • {product?.brand || ''}</p>
-                </td>
-                <td className="py-3 text-center">{sale.quantity} {product?.unit || 'units'}</td>
-                <td className="py-3 text-right">₹{sale.sale_price.toFixed(2)}</td>
-                <td className="py-3 text-right font-bold text-slate-800">₹{itemTotal.toFixed(2)}</td>
-              </tr>
+              {invoiceTotals.items.map((item, idx) => (
+                <tr key={idx}>
+                  <td className="py-2.5">
+                    <p className="font-bold text-slate-850">{item.product_name}</p>
+                  </td>
+                  <td className="py-2.5 text-center">{item.quantity} {item.unit}</td>
+                  <td className="py-2.5 text-right">₹{item.sale_price.toFixed(2)}</td>
+                  <td className="py-2.5 text-right font-bold text-slate-400">{item.gstRate}%</td>
+                  <td className="py-2.5 text-right font-bold text-slate-800">₹{item.total.toFixed(2)}</td>
+                </tr>
+              ))}
             </tbody>
             <tfoot>
+              {/* GST CGST breakout */}
+              <tr className="border-t border-slate-200 text-slate-500 text-[11px]">
+                <td colSpan={4} className="py-1.5 text-right font-semibold">Central GST (CGST):</td>
+                <td className="py-1.5 text-right font-bold">₹{invoiceTotals.cgst.toFixed(2)}</td>
+              </tr>
+              {/* GST SGST breakout */}
+              <tr className="text-slate-500 text-[11px]">
+                <td colSpan={4} className="py-1.5 text-right font-semibold">State GST (SGST):</td>
+                <td className="py-1.5 text-right font-bold">₹{invoiceTotals.sgst.toFixed(2)}</td>
+              </tr>
+              {/* Grand Total */}
               <tr className="border-t-2 border-slate-800 font-bold">
-                <td colSpan={2} className="py-3 text-sm text-slate-700 uppercase tracking-wide">Grand Total / કુલ રકમ:</td>
-                <td colSpan={2} className="py-3 text-right text-lg text-emerald-600 font-black">
-                  ₹{itemTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                <td colSpan={3} className="py-3 text-xs text-slate-700 uppercase tracking-wide">Grand Total / કુલ રકમ:</td>
+                <td colSpan={2} className="py-3 text-right text-base text-emerald-600 font-black">
+                  ₹{invoiceTotals.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                 </td>
               </tr>
             </tfoot>
           </table>
 
           {/* Invoice Footer */}
-          <div className="text-center pt-6 border-t border-dashed border-slate-200 text-[10px] text-slate-400 font-medium space-y-1">
+          <div className="text-center pt-4 border-t border-dashed border-slate-200 text-[9px] text-slate-450 font-medium space-y-0.5">
             <p>Thank you for your business! / પધારવા બદલ આભાર!</p>
             <p>Subject to local jurisdiction. Goods once sold will not be returned.</p>
-            <p className="text-[8px] text-slate-300">Powered by Umiya Wholesale Software</p>
+            <p className="text-[8px] text-slate-300">Powered by Umiya SaaS Software</p>
           </div>
         </div>
 

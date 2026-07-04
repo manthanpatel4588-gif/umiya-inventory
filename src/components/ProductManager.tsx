@@ -35,9 +35,10 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode, curren
   const [formPurchasePrice, setFormPurchasePrice] = useState('');
   const [formSellingPrice, setFormSellingPrice] = useState('');
   const [formStockQuantity, setFormStockQuantity] = useState('');
-  const [formUnit, setFormUnit] = useState<'Packet' | 'Box' | 'Bundle' | 'Piece'>('Packet');
+  const [formUnit, setFormUnit] = useState<'Packet' | 'Box' | 'Bundle' | 'Piece' | 'Kg' | 'Gram' | 'Litre' | 'Dozen' | 'Bag' | 'Carton'>('Packet');
   const [formMinStock, setFormMinStock] = useState('10');
   const [formBarcode, setFormBarcode] = useState('');
+  const [formGstRate, setFormGstRate] = useState('0');
   const [formError, setFormError] = useState('');
 
   // Subscription Expiry Check
@@ -81,6 +82,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode, curren
     setFormUnit('Packet');
     setFormMinStock('10');
     setFormBarcode('');
+    setFormGstRate('0');
     setFormError('');
     setIsModalOpen(true);
   };
@@ -98,6 +100,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode, curren
     setFormUnit(product.unit);
     setFormMinStock(product.minimum_stock.toString());
     setFormBarcode(product.barcode || '');
+    setFormGstRate((product.gst_rate || 0).toString());
     setFormError('');
     setIsModalOpen(true);
   };
@@ -155,7 +158,8 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode, curren
       stock_quantity: stock,
       unit: formUnit,
       minimum_stock: minStock,
-      barcode: formBarcode.trim() || undefined
+      barcode: formBarcode.trim() || undefined,
+      gst_rate: parseInt(formGstRate)
     };
 
     const updated = db.saveProduct(payload, currentUser.id);
@@ -525,6 +529,12 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode, curren
                     <option value="Box">{t('box', langMode)}</option>
                     <option value="Bundle">{t('bundle', langMode)}</option>
                     <option value="Piece">{t('piece', langMode)}</option>
+                    <option value="Kg">Kg / કિલોગ્રામ</option>
+                    <option value="Gram">Gram / ગ્રામ</option>
+                    <option value="Litre">Litre / લિટર</option>
+                    <option value="Dozen">Dozen / ડઝન</option>
+                    <option value="Bag">Bag / ગુણ</option>
+                    <option value="Carton">Carton / કાર્ટન</option>
                   </select>
                 </div>
 
@@ -546,6 +556,20 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode, curren
                     onChange={(e) => setFormBarcode(e.target.value)}
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm"
                   />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 uppercase">GST Rate (%) / GST દર</label>
+                  <select
+                    value={formGstRate}
+                    onChange={(e) => setFormGstRate(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm"
+                  >
+                    <option value="0">0% (GST Exempt / કર મુક્ત)</option>
+                    <option value="5">5% GST</option>
+                    <option value="12">12% GST</option>
+                    <option value="18">18% GST</option>
+                  </select>
                 </div>
               </div>
 

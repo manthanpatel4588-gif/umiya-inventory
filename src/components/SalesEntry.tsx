@@ -11,7 +11,10 @@ import {
   CheckCircle,
   AlertTriangle,
   Receipt,
-  Lock
+  Trash2,
+  Lock,
+  Plus,
+  History
 } from 'lucide-react';
 import { Product, Sale, db, User as UserType } from '../database/db';
 import { LanguageMode, t } from '../utils/translations';
@@ -22,14 +25,23 @@ interface SalesEntryProps {
   currentUser: UserType;
 }
 
+interface CartItem {
+  product: Product;
+  quantity: number;
+  sellingPrice: number;
+}
+
 export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser }) => {
   const [products, setProducts] = useState<Product[]>(() => db.getProducts(currentUser.id));
   const [sales, setSales] = useState<Sale[]>(() => db.getSales(currentUser.id));
   
+  // Tab control for the right pane: 'cart' or 'history'
+  const [activeRightTab, setActiveRightTab] = useState<'cart' | 'history'>('cart');
+
   // Search query for history
   const [historySearch, setHistorySearch] = useState('');
 
-  // Form State
+  // Form Input States
   const [saleDate, setSaleDate] = useState(() => new Date().toISOString().substring(0, 10));
   const [customerName, setCustomerName] = useState('');
   const [selectedProductId, setSelectedProductId] = useState('');
@@ -37,6 +49,9 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
   const [sellingPrice, setSellingPrice] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+
+  // POS Shopping Cart State
+  const [cart, setCart] = useState<CartItem[]>([]);
 
   // Product Search State inside Form
   const [productSearch, setProductSearch] = useState('');
@@ -67,35 +82,12 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
     return products.find(p => p.id === selectedProductId) || null;
   }, [products, selectedProductId]);
 
-  // Auto calculate total sale amount
-  const totalAmount = useMemo(() => {
-    const qty = parseFloat(quantity);
-    const price = parseFloat(sellingPrice);
-    if (!isNaN(qty) && !isNaN(price)) {
-      return (qty * price).toFixed(2);
-    }
-    return '0.00';
-  }, [quantity, sellingPrice]);
-
-  // Handle product selection to auto-fill pricing and clear quantities
-  const handleProductChange = (prodId: string) => {
-    setSelectedProductId(prodId);
-    const prod = products.find(p => p.id === prodId);
-    if (prod) {
-      setSellingPrice(prod.selling_price.toString());
-      setQuantity('');
-    } else {
-      setSellingPrice('');
-      setQuantity('');
-    }
-  };
-
-  // Form submission
-  const handleSubmit = (e: React.FormEvent) => {
+  // Add Item to POS Cart
+  const handleAddToCart = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isExpired) return; // Guard
-    setSuccessMsg('');
+    if (isExpired) return;
     setErrorMsg('');
+    setSuccessMsg('');
 
     if (!selectedProductId || !selectedProduct) {
       setErrorMsg(langMode === 'gu' ? 'કૃપા કરીને એક ઉત્પાદન પસંદ કરો' : 'Please select a Product');
@@ -114,47 +106,126 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
       return;
     }
 
-    if (selectedProduct.stock_quantity < qty) {
+    // Check stock availability (considering items already in the cart)
+    const existingCartIndex = cart.findIndex(item => item.product.id === selectedProductId);
+    const inCartQty = existingCartIndex > -1 ? cart[existingCartIndex].quantity : 0;
+    const totalNeeded = inCartQty + qty;
+
+    if (selectedProduct.stock_quantity < totalNeeded) {
       setErrorMsg(
         langMode === 'gu' 
-          ? `અપૂરતો સ્ટોક! હાલમાં માત્ર ${selectedProduct.stock_quantity} એકમો ઉપલબ્ધ છે.` 
-          : `Insufficient stock! Only ${selectedProduct.stock_quantity} units available.`
+          ? `અપૂરતો સ્ટોક! ઉપલબ્ધ: ${selectedProduct.stock_quantity}, કાર્ટમાં: ${inCartQty}` 
+          : `Insufficient stock! Available: ${selectedProduct.stock_quantity}, in Cart: ${inCartQty}`
       );
       return;
     }
 
-    try {
-      const newSale: Omit<Sale, 'id' | 'shop_id' | 'profit' | 'invoice_number'> = {
-        sale_date: new Date(saleDate).toISOString(),
-        product_id: selectedProductId,
-        product_name: selectedProduct.product_name,
-        quantity: qty,
-        sale_price: price,
-        customer_name: customerName.trim() || undefined
-      };
+    // Add to cart state
+    if (existingCartIndex > -1) {
+      const updatedCart = [...cart];
+      updatedCart[existingCartIndex].quantity += qty;
+      updatedCart[existingCartIndex].sellingPrice = price; // update to latest custom price if changed
+      setCart(updatedCart);
+    } else {
+      setCart([...cart, { product: selectedProduct, quantity: qty, sellingPrice: price }]);
+    }
 
-      const recorded = db.addSale(newSale, currentUser.id);
+    // Reset selection fields
+    setSelectedProductId('');
+    setProductSearch('');
+    setQuantity('');
+    setSellingPrice('');
+    
+    // Automatically switch to cart tab to show updates
+    setActiveRightTab('cart');
+  };
+
+  // Remove Item from Cart
+  const handleRemoveFromCart = (index: number) => {
+    const updated = cart.filter((_, idx) => idx !== index);
+    setCart(updated);
+  };
+
+  // POS Checkout (Batch save to database)
+  const handleCheckout = () => {
+    if (isExpired) return;
+    if (cart.length === 0) {
+      setErrorMsg(langMode === 'gu' ? 'કાર્ટ ખાલી છે!' : 'Your shopping cart is empty!');
+      return;
+    }
+
+    setErrorMsg('');
+    setSuccessMsg('');
+
+    try {
+      // 1. Pre-generate Invoice Number
+      const allSales = db.getSales(currentUser.id);
+      const uniqueInvoiceNumbers = new Set(allSales.map(s => s.invoice_number));
+      const tenantSalesCount = uniqueInvoiceNumbers.size + 1;
+      const invNumber = `INV-${new Date().getFullYear()}-${String(tenantSalesCount).padStart(4, '0')}`;
+
+      // 2. Loop over cart and write each sale record
+      let firstRecordedSale: Sale | null = null;
+      for (const item of cart) {
+        const payload: Omit<Sale, 'id' | 'shop_id' | 'profit' | 'invoice_number'> & { invoice_number: string } = {
+          sale_date: new Date(saleDate).toISOString(),
+          product_id: item.product.id,
+          product_name: item.product.product_name,
+          quantity: item.quantity,
+          sale_price: item.sellingPrice,
+          customer_name: customerName.trim() || undefined,
+          invoice_number: invNumber
+        };
+
+        const recorded = db.addSale(payload, currentUser.id);
+        if (!firstRecordedSale) {
+          firstRecordedSale = recorded;
+        }
+      }
+
+      // 3. Clear cart and inputs
+      setCart([]);
+      setCustomerName('');
       
-      // Update local state
+      // Refresh database lists
       setProducts(db.getProducts(currentUser.id));
       setSales(db.getSales(currentUser.id));
-      
-      setActiveInvoiceSale(recorded);
-      setIsInvoiceOpen(true);
 
-      setSelectedProductId('');
-      setQuantity('');
-      setSellingPrice('');
-      setCustomerName('');
-      setProductSearch('');
+      // 4. Open grouped Invoice PDF modal
+      if (firstRecordedSale) {
+        setActiveInvoiceSale(firstRecordedSale);
+        setIsInvoiceOpen(true);
+      }
 
-      setSuccessMsg(langMode === 'gu' ? 'વેચાણ સફળતાપૂર્વક નોંધાયું છે!' : 'Sale successfully recorded!');
-      setTimeout(() => setSuccessMsg(''), 4000);
+      setSuccessMsg(langMode === 'gu' ? 'બિલ સફળતાપૂર્વક ચૂકવાઈ ગયું છે!' : 'Checkout successful! Invoice generated.');
+      setTimeout(() => setSuccessMsg(''), 4500);
+
     } catch (err: any) {
-      setErrorMsg(err.message || 'Error recording sale');
+      setErrorMsg(err.message || 'Error checking out POS cart');
     }
   };
 
+  // Cart Calculations (Inclusive of GST)
+  const cartTotals = useMemo(() => {
+    const subtotal = cart.reduce((acc, item) => acc + (item.quantity * item.sellingPrice), 0);
+    
+    // CGST & SGST Calculations (Based on inclusive prices)
+    const totalGst = cart.reduce((acc, item) => {
+      const total = item.quantity * item.sellingPrice;
+      const gstRate = item.product.gst_rate || 0;
+      const base = total / (1 + gstRate / 100);
+      return acc + (total - base);
+    }, 0);
+
+    return {
+      subtotal,
+      cgst: totalGst / 2,
+      sgst: totalGst / 2,
+      grandTotal: subtotal
+    };
+  }, [cart]);
+
+  // Open past receipt
   const handleOpenPastInvoice = (sale: Sale) => {
     setActiveInvoiceSale(sale);
     setIsInvoiceOpen(true);
@@ -173,31 +244,31 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Top Title */}
       <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-        <h2 className="text-xl font-bold text-slate-800">
-          {t('sales', langMode)}
+        <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+          <ShoppingCart className="w-5 h-5 text-emerald-600" />
+          <span>Point of Sale (POS) Cashier Cart / વેચાણ બિલિંગ</span>
         </h2>
         <p className="text-sm text-slate-500 mt-0.5">
           {langMode === 'gu' 
-            ? 'નવી વેચાણની નોંધણી કરો જે સ્ટોક ઓછો કરશે, નફો ગણશે અને બીલ જનરેટ કરશે.' 
-            : 'Register a wholesale sale. Submitting will deduct stock, calculate profits, and generate an invoice.'}
+            ? 'કાર્ટમાં બધી વસ્તુઓ ઉમેરો, જીએસટી જુઓ અને ગ્રાહક માટે સિંગલ બિલ ચૂકવો.' 
+            : 'Add multiple items to checkout cart, calculate CGST/SGST taxes, and print invoice receipt.'}
         </p>
       </div>
 
-      {/* Main Grid Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         
-        {/* Sales Entry Form */}
+        {/* Left Column: Product Searcher & Add Form */}
         <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm h-fit">
           <h3 className="font-bold text-slate-700 mb-4 border-b border-slate-100 pb-3 flex items-center gap-2">
-            <span className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg">
-              <ShoppingCart className="w-4 h-4" />
+            <span className="p-1.5 bg-emerald-50 text-emerald-700 rounded-lg">
+              <Plus className="w-4 h-4" />
             </span>
-            <span>{langMode === 'gu' ? 'નવું બીલ નોંધણી' : 'New Sales Bill Entry'}</span>
+            <span>{langMode === 'gu' ? 'કાર્ટમાં આઇટમ ઉમેરો' : 'Add Item to Cart'}</span>
           </h3>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleAddToCart} className="space-y-4">
             {successMsg && (
               <div className="p-3 bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-700 rounded-xl flex items-center gap-2">
                 <CheckCircle className="w-4 h-4 shrink-0" />
@@ -207,7 +278,7 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
             
             {errorMsg && (
               <div className="p-3 bg-red-50 border border-red-200 text-xs font-bold text-red-700 rounded-xl flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>{errorMsg}</span>
               </div>
             )}
@@ -230,7 +301,7 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
                 value={saleDate}
                 disabled={isExpired}
                 onChange={(e) => setSaleDate(e.target.value)}
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed"
               />
             </div>
 
@@ -246,11 +317,11 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
                 placeholder={langMode === 'gu' ? 'ગ્રાહકનું નામ (વૈકલ્પિક)' : 'Customer Name (Optional)'}
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors"
               />
             </div>
 
-            {/* Product Selector */}
+            {/* Searchable Product Dropdown */}
             <div className="space-y-1 relative">
               <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
                 <Package className="w-3.5 h-3.5 text-slate-400" />
@@ -266,7 +337,7 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
                   onFocus={() => setIsProductDropdownOpen(true)}
                   onChange={(e) => {
                     setProductSearch(e.target.value);
-                    setSelectedProductId(''); // Reset until clicked
+                    setSelectedProductId(''); 
                     setIsProductDropdownOpen(true);
                   }}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
@@ -280,14 +351,14 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
                       setSellingPrice('');
                       setQuantity('');
                     }}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-655 text-xs font-bold"
                   >
                     Clear
                   </button>
                 )}
               </div>
 
-              {/* Dropdown suggestions list */}
+              {/* Dropdown menu */}
               {isProductDropdownOpen && !isExpired && (
                 <>
                   <div 
@@ -298,7 +369,7 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
                   <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-56 overflow-y-auto divide-y divide-slate-100">
                     {filteredProductsForSelect.length === 0 ? (
                       <div className="p-3 text-xs text-slate-400 text-center font-semibold">
-                        No products found / કોઈ ઉત્પાદન મળ્યું નથી
+                        No products match
                       </div>
                     ) : (
                       filteredProductsForSelect.map(p => (
@@ -313,7 +384,7 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
                             setQuantity('');
                             setIsProductDropdownOpen(false);
                           }}
-                          className="w-full text-left p-3 hover:bg-slate-50 flex justify-between items-center text-xs font-semibold disabled:opacity-50 disabled:bg-slate-50"
+                          className="w-full text-left p-3 hover:bg-slate-50 flex justify-between items-center text-xs font-semibold disabled:opacity-50"
                         >
                           <div className="flex flex-col">
                             <span className="text-slate-800">{p.product_name}</span>
@@ -330,18 +401,27 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
                   </div>
                 </>
               )}
+            </div>
 
-              {selectedProduct && (
-                <div className="mt-1 flex items-center justify-between text-[11px] font-semibold">
-                  <span className={`${selectedProduct.stock_quantity <= selectedProduct.minimum_stock ? 'text-amber-500' : 'text-slate-400'}`}>
-                    {langMode === 'gu' ? `સ્ટોક ઉપલબ્ધ: ${selectedProduct.stock_quantity} ${selectedProduct.unit}` : `Stock Available: ${selectedProduct.stock_quantity} ${selectedProduct.unit}`}
-                  </span>
-                  <span className="text-slate-400">
-                    Cost Price: ₹{selectedProduct.purchase_price}
+            {/* Selected Product Specs */}
+            {selectedProduct && (
+              <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl space-y-1 text-[11px] font-semibold text-slate-500">
+                <div className="flex justify-between">
+                  <span>Available Stock:</span>
+                  <span className={`${selectedProduct.stock_quantity <= selectedProduct.minimum_stock ? 'text-amber-500' : 'text-slate-700'}`}>
+                    {selectedProduct.stock_quantity} {selectedProduct.unit}
                   </span>
                 </div>
-              )}
-            </div>
+                <div className="flex justify-between">
+                  <span>Standard Cost Price:</span>
+                  <span>₹{selectedProduct.purchase_price}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>GST Slab Tax:</span>
+                  <span>{selectedProduct.gst_rate || 0}% GST</span>
+                </div>
+              </div>
+            )}
 
             {/* Qty & Selling Rate */}
             <div className="grid grid-cols-2 gap-4">
@@ -354,9 +434,9 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
                   type="number"
                   placeholder="0"
                   value={quantity}
-                  disabled={isExpired}
+                  disabled={isExpired || !selectedProductId}
                   onChange={(e) => setQuantity(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 disabled:opacity-60"
                 />
               </div>
 
@@ -370,129 +450,227 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
                   step="0.01"
                   placeholder="0.00"
                   value={sellingPrice}
-                  disabled={isExpired}
+                  disabled={isExpired || !selectedProductId}
                   onChange={(e) => setSellingPrice(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 disabled:opacity-60"
                 />
               </div>
             </div>
 
-            {/* Profit margin */}
-            {selectedProduct && quantity && sellingPrice && (
-              <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-xs text-slate-500 flex justify-between items-center font-medium">
-                <span>Profit Margin:</span>
-                <span className="font-bold text-emerald-600">
-                  ₹{((parseFloat(sellingPrice) - selectedProduct.purchase_price) * parseInt(quantity)).toFixed(2)} Profit
-                </span>
-              </div>
-            )}
-
-            {/* Grand Total */}
-            <div className="p-4 bg-emerald-50/50 border border-emerald-100 rounded-xl flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase">{t('totalAmount', langMode)}:</span>
-              <span className="text-xl font-black text-emerald-700">₹{parseFloat(totalAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-            </div>
-
-            {/* Submit */}
+            {/* Cart Insert Button */}
             {!isExpired ? (
               <button
                 type="submit"
-                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition-all shadow-md shadow-emerald-100"
+                disabled={!selectedProductId}
+                className="w-full py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {t('recordSale', langMode)}
+                Add to Cart / કાર્ટમાં ઉમેરો
               </button>
             ) : (
-              <div className="w-full py-3 bg-slate-100 border border-slate-200 text-slate-400 font-bold text-sm rounded-xl text-center select-none flex items-center justify-center gap-2">
+              <div className="w-full py-2.5 bg-slate-100 border border-slate-200 text-slate-400 font-bold text-xs rounded-xl text-center select-none flex items-center justify-center gap-2">
                 <Lock className="w-4 h-4" />
-                <span>{t('recordSale', langMode)} (Locked)</span>
+                <span>Locked</span>
               </div>
             )}
           </form>
         </div>
 
-        {/* History Column */}
-        <div className="lg:col-span-3 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
-            <h3 className="font-bold text-slate-700 flex items-center gap-2">
-              <span className="p-1.5 bg-slate-100 text-slate-500 rounded-lg">
-                <Clock className="w-4 h-4" />
-              </span>
-              <span>{t('salesHistory', langMode)}</span>
-            </h3>
-            
-            <div className="relative w-full sm:w-48">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-              <input
-                type="text"
-                placeholder={langMode === 'gu' ? 'બીલ નંબર અથવા નામ...' : 'Search invoice / customer...'}
-                value={historySearch}
-                onChange={(e) => setHistorySearch(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none"
-              />
+        {/* Right Column: Dynamic Cart List OR Sales History */}
+        <div className="lg:col-span-3 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col min-h-[500px]">
+          
+          {/* Tab Selection Header */}
+          <div className="flex border-b border-slate-100 pb-3 mb-4 justify-between items-center">
+            <div className="flex gap-2">
+              <button
+                onClick={() => setActiveRightTab('cart')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  activeRightTab === 'cart' 
+                    ? 'bg-emerald-50 text-emerald-700 shadow-sm border border-emerald-100' 
+                    : 'text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                <ShoppingCart className="w-4 h-4" />
+                <span>Active Checkout Cart ({cart.length})</span>
+              </button>
+              
+              <button
+                onClick={() => setActiveRightTab('history')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  activeRightTab === 'history' 
+                    ? 'bg-slate-100 text-slate-700 border border-slate-200' 
+                    : 'text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                <History className="w-4 h-4" />
+                <span>Sales Logs</span>
+              </button>
             </div>
+
+            {activeRightTab === 'history' && (
+              <div className="relative w-36">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Filter logs..."
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                  className="w-full pl-6 pr-2 py-1 bg-slate-50 border border-slate-200 rounded-md text-[10px] focus:outline-none"
+                />
+              </div>
+            )}
           </div>
 
-          {/* History List Table */}
-          <div className="flex-1 overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50/70 text-[10px] font-bold text-slate-400 uppercase border-b border-slate-100">
-                  <th className="px-3 py-2">{t('invoiceNumber', langMode)}</th>
-                  <th className="px-3 py-2">{langMode === 'gu' ? 'ઉત્પાદન' : 'Product'}</th>
-                  <th className="px-3 py-2 text-right">{t('quantity', langMode)}</th>
-                  <th className="px-3 py-2 text-right">{t('totalAmount', langMode)}</th>
-                  <th className="px-3 py-2 text-right">{t('profit', langMode)}</th>
-                  <th className="px-4 py-2 text-center">Receipt</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-xs text-slate-600">
-                {filteredSales.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
-                      {langMode === 'gu' ? 'કોઈ વેચાણ મળ્યું નથી.' : 'No sales records found.'}
-                    </td>
+          {/* ACTIVE CART VIEW */}
+          {activeRightTab === 'cart' && (
+            <div className="flex-1 flex flex-col">
+              {cart.length === 0 ? (
+                <div className="flex-1 flex flex-col items-center justify-center text-slate-400 text-center py-12">
+                  <ShoppingCart className="w-12 h-12 text-slate-200 stroke-1 mb-2 animate-bounce" />
+                  <p className="text-xs font-bold text-slate-450">Checkout cart is empty.</p>
+                  <p className="text-[10px] text-slate-400 mt-1">Scan barcodes or search products to begin billing.</p>
+                </div>
+              ) : (
+                <div className="flex-1 flex flex-col justify-between">
+                  <div className="overflow-x-auto max-h-[300px]">
+                    <table className="w-full text-left border-collapse text-xs text-slate-600">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-100 font-bold text-slate-400 uppercase text-[9px] tracking-wider">
+                          <th className="px-3 py-2">Item Details</th>
+                          <th className="px-3 py-2 text-right">Qty</th>
+                          <th className="px-3 py-2 text-right">Price</th>
+                          <th className="px-3 py-2 text-right">GST %</th>
+                          <th className="px-3 py-2 text-right">Total</th>
+                          <th className="px-3 py-2 text-center">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50 font-medium">
+                        {cart.map((item, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50/20">
+                            <td className="px-3 py-2.5">
+                              <p className="font-bold text-slate-800 line-clamp-1">{item.product.product_name}</p>
+                              <span className="text-[10px] text-slate-400 font-normal">{item.product.product_name_gu}</span>
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-semibold">{item.quantity} {item.product.unit}</td>
+                            <td className="px-3 py-2.5 text-right text-slate-500">₹{item.sellingPrice.toFixed(2)}</td>
+                            <td className="px-3 py-2.5 text-right font-bold text-slate-400">{item.product.gst_rate || 0}%</td>
+                            <td className="px-3 py-2.5 text-right font-bold text-slate-800">
+                              ₹{(item.quantity * item.sellingPrice).toFixed(2)}
+                            </td>
+                            <td className="px-3 py-2.5 text-center">
+                              <button
+                                onClick={() => handleRemoveFromCart(idx)}
+                                className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Calculations & Checkout */}
+                  <div className="mt-4 pt-4 border-t border-slate-100 space-y-3 bg-slate-50/50 p-4 rounded-2xl">
+                    <div className="space-y-1.5 text-xs text-slate-500 font-semibold">
+                      <div className="flex justify-between">
+                        <span>Items Subtotal (Inclusive of GST):</span>
+                        <span className="text-slate-850">₹{cartTotals.subtotal.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-[11px] text-slate-400 font-normal">
+                        <span>CGST Breakout (Central GST):</span>
+                        <span>₹{cartTotals.cgst.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-[11px] text-slate-400 font-normal">
+                        <span>SGST Breakout (State GST):</span>
+                        <span>₹{cartTotals.sgst.toFixed(2)}</span>
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center justify-between">
+                      <span className="text-xs font-bold text-emerald-800 uppercase">Grand Total (કુલ રકમ):</span>
+                      <span className="text-xl font-black text-emerald-700">₹{cartTotals.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                    </div>
+
+                    {!isExpired ? (
+                      <button
+                        onClick={handleCheckout}
+                        className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition-all shadow-md shadow-emerald-100"
+                      >
+                        Checkout & Print Invoice / બિલ બનાવો
+                      </button>
+                    ) : (
+                      <div className="w-full py-3 bg-slate-100 border border-slate-200 text-slate-400 font-bold text-sm rounded-xl text-center select-none flex items-center justify-center gap-2">
+                        <Lock className="w-4 h-4" />
+                        <span>Checkout (Locked)</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* HISTORICAL SALES LOG */}
+          {activeRightTab === 'history' && (
+            <div className="flex-1 overflow-x-auto max-h-[420px]">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/70 text-[9px] font-bold text-slate-400 uppercase border-b border-slate-100 tracking-wider">
+                    <th className="px-3 py-2">Invoice No</th>
+                    <th className="px-3 py-2">Product Sold</th>
+                    <th className="px-3 py-2 text-right">Qty</th>
+                    <th className="px-3 py-2 text-right">Total Bill</th>
+                    <th className="px-3 py-2 text-center">Receipt</th>
                   </tr>
-                ) : (
-                  filteredSales.map((s) => (
-                    <tr key={s.id} className="hover:bg-slate-50/30">
-                      <td className="px-3 py-3">
-                        <div className="flex flex-col">
-                          <span className="font-bold text-slate-800">{s.invoice_number}</span>
-                          <span className="text-[9px] text-slate-400 font-normal">
-                            {new Date(s.sale_date).toLocaleDateString(langMode === 'gu' ? 'gu-IN' : 'en-US')}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-3 py-3">
-                        <div className="flex flex-col">
-                          <span className="font-semibold text-slate-800 line-clamp-1">{s.product_name}</span>
-                          <span className="text-[9px] text-slate-450 font-normal">To: {s.customer_name || 'Walk-in'}</span>
-                        </div>
-                      </td>
-                      <td className="px-3 py-3 text-right font-medium text-slate-700">
-                        {s.quantity} units
-                      </td>
-                      <td className="px-3 py-3 text-right font-bold text-emerald-600">
-                        ₹{(s.quantity * s.sale_price).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                      </td>
-                      <td className="px-3 py-3 text-right font-semibold text-amber-600">
-                        ₹{s.profit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <button
-                          onClick={() => handleOpenPastInvoice(s)}
-                          className="p-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg border border-emerald-100 transition-colors inline-flex items-center gap-1 text-[10px] font-bold"
-                        >
-                          <Receipt className="w-3.5 h-3.5" />
-                          <span>View</span>
-                        </button>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs text-slate-650">
+                  {filteredSales.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center text-slate-400">
+                        No transactions matches query.
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                  ) : (
+                    filteredSales.map((s) => (
+                      <tr key={s.id} className="hover:bg-slate-50/30">
+                        <td className="px-3 py-3">
+                          <div className="flex flex-col">
+                            <span className="font-bold text-slate-800">{s.invoice_number}</span>
+                            <span className="text-[9px] text-slate-400 font-normal">
+                              {new Date(s.sale_date).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3">
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-slate-800 line-clamp-1">{s.product_name}</span>
+                            <span className="text-[9px] text-slate-400">To: {s.customer_name || 'Walk-in'}</span>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 text-right font-medium text-slate-700">
+                          {s.quantity}
+                        </td>
+                        <td className="px-3 py-3 text-right font-bold text-emerald-600">
+                          ₹{(s.quantity * s.sale_price).toFixed(2)}
+                        </td>
+                        <td className="px-3 py-3 text-center">
+                          <button
+                            onClick={() => handleOpenPastInvoice(s)}
+                            className="p-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg border border-emerald-100 transition-colors inline-flex items-center gap-0.5 text-[9px] font-bold"
+                          >
+                            <Receipt className="w-3 h-3" />
+                            <span>View</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
         </div>
 
       </div>
@@ -504,7 +682,7 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
           setActiveInvoiceSale(null);
         }}
         sale={activeInvoiceSale}
-        product={products.find(p => p.id === activeInvoiceSale?.product_id) || null}
+        product={null} 
         langMode={langMode}
       />
     </div>
