@@ -37,13 +37,13 @@ export const AdminDashboard: React.FC = () => {
     const totalProducts = allProductsRaw.length;
     const totalSalesCount = allSalesRaw.length;
 
-    // Estimate MRR (Monthly Recurring Revenue)
-    // Trial: ₹0, Monthly: ₹1,500/mo, Quarterly: ₹4,000 (₹1,333/mo), Yearly: ₹12,000 (₹1,000/mo)
+    // Estimate MRR (Monthly Recurring Revenue) based on SuperAdmin set pricing config
+    const config = db.getSaasConfig();
     const rates: Record<string, number> = {
       Trial: 0,
-      Monthly: 1500,
-      Quarterly: 1333,
-      Yearly: 1000
+      Monthly: config.monthly_price,
+      Quarterly: Math.round(config.quarterly_price / 3),
+      Yearly: Math.round(config.yearly_price / 12)
     };
 
     const monthlyRevenue = shopOwners
@@ -90,7 +90,13 @@ export const AdminDashboard: React.FC = () => {
 
   // Chart 2: Revenue contribution by Plan Type
   const revenueChartData = useMemo(() => {
-    const rates: Record<string, number> = { Trial: 0, Monthly: 1500, Quarterly: 1333, Yearly: 1000 };
+    const config = db.getSaasConfig();
+    const rates: Record<string, number> = { 
+      Trial: 0, 
+      Monthly: config.monthly_price, 
+      Quarterly: Math.round(config.quarterly_price / 3), 
+      Yearly: Math.round(config.yearly_price / 12) 
+    };
     const revCounts: Record<string, number> = { Trial: 0, Monthly: 0, Quarterly: 0, Yearly: 0 };
     
     stats.shopOwners.filter(u => u.status === 'Active').forEach(u => {

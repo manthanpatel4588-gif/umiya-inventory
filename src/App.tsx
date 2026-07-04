@@ -147,7 +147,7 @@ function App() {
         case 'admin_audit':
           return <AdminAuditPanel />;
         case 'admin_settings':
-          return <Settings langMode={langMode} />;
+          return <Settings langMode={langMode} currentUser={currentUser} />;
         default:
           return <AdminDashboard />;
       }
@@ -204,7 +204,7 @@ function App() {
       case 'profile':
         return <ProfileSettings currentUser={currentUser} setCurrentUser={setCurrentUser} langMode={langMode} />;
       case 'settings':
-        return <Settings langMode={langMode} />;
+        return <Settings langMode={langMode} currentUser={currentUser} />;
       default:
         return <Dashboard langMode={langMode} onNavigate={setCurrentView} currentUser={currentUser} />;
     }

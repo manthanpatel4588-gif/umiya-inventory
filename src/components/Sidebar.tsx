@@ -7,7 +7,6 @@ import {
   Users, 
   BarChart3, 
   Settings, 
-  Languages, 
   Database,
   Store,
   LogOut,
@@ -124,30 +123,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
         </nav>
 
-        {/* Language Selection & Session info */}
-        <div className="p-3 border-t border-slate-100 bg-slate-50 space-y-3">
-          <div>
-            <div className="flex items-center gap-2 mb-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wide">
-              <Languages className="w-3.5 h-3.5" />
-              <span>Language / ભાષા</span>
-            </div>
-            <div className="grid grid-cols-3 gap-0.5 bg-white p-0.5 rounded-lg border border-slate-200 text-[10px]">
-              {(['en', 'gu', 'dual'] as LanguageMode[]).map((mode) => (
-                <button
-                  key={mode}
-                  onClick={() => setLangMode(mode)}
-                  className={`py-0.5 rounded font-bold text-center ${
-                    langMode === mode 
-                      ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-sm' 
-                      : 'text-slate-500 hover:bg-slate-100'
-                  }`}
-                >
-                  {mode === 'en' ? 'EN' : mode === 'gu' ? 'ગુજ' : 'DUAL'}
-                </button>
-              ))}
-            </div>
-          </div>
-
+        {/* Session info & Logout */}
+        <div className="p-3 border-t border-slate-100 bg-slate-50">
           {/* Logout Button */}
           <button
             onClick={onLogout}

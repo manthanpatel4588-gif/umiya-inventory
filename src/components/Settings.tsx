@@ -1,18 +1,26 @@
 import React, { useState } from 'react';
-import { Settings as SettingsIcon, Database, Save, RefreshCw, CheckCircle, AlertTriangle } from 'lucide-react';
-import { db } from '../database/db';
+import { Settings as SettingsIcon, Database, Save, RefreshCw, CheckCircle, AlertTriangle, Coins } from 'lucide-react';
+import { db, User } from '../database/db';
 import { LanguageMode, t } from '../utils/translations';
 import { isSupabaseConfigured } from '../database/supabase';
 
 interface SettingsProps {
   langMode: LanguageMode;
+  currentUser?: User;
 }
 
-export const Settings: React.FC<SettingsProps> = ({ langMode }) => {
+export const Settings: React.FC<SettingsProps> = ({ langMode, currentUser }) => {
   const [supabaseUrl, setSupabaseUrl] = useState(() => db.getSupabaseConfig().url);
   const [supabaseKey, setSupabaseKey] = useState(() => db.getSupabaseConfig().key);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
+
+  // Super Admin subscription configuration pricing states
+  const isSuperAdmin = currentUser?.role === 'SuperAdmin';
+  const [monthlyPrice, setMonthlyPrice] = useState(() => db.getSaasConfig().monthly_price.toString());
+  const [quarterlyPrice, setQuarterlyPrice] = useState(() => db.getSaasConfig().quarterly_price.toString());
+  const [yearlyPrice, setYearlyPrice] = useState(() => db.getSaasConfig().yearly_price.toString());
+  const [priceSuccess, setPriceSuccess] = useState('');
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,6 +55,29 @@ export const Settings: React.FC<SettingsProps> = ({ langMode }) => {
     }
   };
 
+  const handleSavePrices = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPriceSuccess('');
+
+    const m = parseFloat(monthlyPrice);
+    const q = parseFloat(quarterlyPrice);
+    const y = parseFloat(yearlyPrice);
+
+    if (isNaN(m) || m < 0 || isNaN(q) || q < 0 || isNaN(y) || y < 0) {
+      alert('Please enter valid positive numbers for plan rates.');
+      return;
+    }
+
+    db.saveSaasConfig({
+      monthly_price: m,
+      quarterly_price: q,
+      yearly_price: y
+    });
+
+    setPriceSuccess('SaaS pricing subscription tiers successfully updated and saved!');
+    setTimeout(() => setPriceSuccess(''), 3000);
+  };
+
   const handleResetLocal = () => {
     if (confirm(langMode === 'gu' ? 'શું તમે ખરેખર કન્ફિગરેશન સાફ કરવા માંગો છો?' : 'Reset connection to Local Storage?')) {
       db.saveSupabaseConfig('', '');
@@ -65,9 +96,72 @@ export const Settings: React.FC<SettingsProps> = ({ langMode }) => {
         <p className="text-sm text-slate-500 mt-0.5">
           {langMode === 'gu' 
             ? 'લોકલ ડેટા સ્ટોરેજ અથવા સુપબેઝ ક્લાઉડ સિંક્રનાઇઝેશન સેટ કરો.' 
-            : 'Configure your active database connection. Connect a Supabase instance to store data in the cloud.'}
+            : 'Configure your active database connection or modify platform configurations.'}
         </p>
       </div>
+
+      {/* Super Admin SaaS pricing config card */}
+      {isSuperAdmin && (
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+          <h3 className="font-bold text-slate-700 flex items-center gap-2 text-sm border-b border-slate-100 pb-3">
+            <Coins className="w-4 h-4 text-indigo-600" />
+            <span>SaaS Plan Subscription Pricing (₹)</span>
+          </h3>
+
+          <form onSubmit={handleSavePrices} className="space-y-4 pt-2">
+            {priceSuccess && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-700 rounded-xl">
+                {priceSuccess}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-500 uppercase">Monthly Price</label>
+                <input
+                  type="number"
+                  value={monthlyPrice}
+                  onChange={(e) => setMonthlyPrice(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-indigo-500 font-semibold"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-500 uppercase">3-Month Price</label>
+                <input
+                  type="number"
+                  value={quarterlyPrice}
+                  onChange={(e) => setQuarterlyPrice(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-indigo-500 font-semibold"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-500 uppercase">12-Month Price</label>
+                <input
+                  type="number"
+                  value={yearlyPrice}
+                  onChange={(e) => setYearlyPrice(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-indigo-500 font-semibold"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-100">
+              <button
+                type="submit"
+                className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-indigo-100"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>Save Prices</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* Database Mode Card */}
       <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">

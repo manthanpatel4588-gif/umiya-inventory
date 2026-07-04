@@ -26,6 +26,12 @@ export interface AuditLog {
   shop_id?: string;
 }
 
+export interface SaaSConfig {
+  monthly_price: number;
+  quarterly_price: number;
+  yearly_price: number;
+}
+
 export interface Product {
   id: string;
   shop_id: string; // Tenant isolation key
@@ -85,7 +91,8 @@ const KEYS = {
   SUPPLIERS: 'umiya_suppliers',
   PURCHASES: 'umiya_purchases',
   SALES: 'umiya_sales',
-  SUPABASE_CONFIG: 'umiya_supabase_config'
+  SUPABASE_CONFIG: 'umiya_supabase_config',
+  SAAS_CONFIG: 'umiya_saas_config'
 };
 
 // Seed Users List
@@ -679,11 +686,59 @@ export const db = {
       if (lErr) throw lErr;
       if (logs) localStorage.setItem(KEYS.AUDIT_LOGS, JSON.stringify(logs));
 
+      // Pull SaaS Config if available
+      try {
+        const { data: configData } = await supabase.from('saas_config').select('*').eq('id', 1).maybeSingle();
+        if (configData) {
+          localStorage.setItem(KEYS.SAAS_CONFIG, JSON.stringify({
+            monthly_price: configData.monthly_price,
+            quarterly_price: configData.quarterly_price,
+            yearly_price: configData.yearly_price
+          }));
+        }
+      } catch (cfgErr) {
+        console.warn('Sync SaaS Config skip/error:', cfgErr);
+      }
+
       console.log('Supabase sync completed successfully!');
       return true;
     } catch (err) {
       console.error('Error syncing from Supabase:', err);
       return false;
+    }
+  },
+
+  getSaasConfig: (): SaaSConfig => {
+    initializeDB();
+    const configRaw = localStorage.getItem(KEYS.SAAS_CONFIG);
+    if (configRaw) {
+      try {
+        return JSON.parse(configRaw);
+      } catch (e) {
+        // fallback
+      }
+    }
+    return {
+      monthly_price: 1000,
+      quarterly_price: 2500,
+      yearly_price: 9000
+    };
+  },
+
+  saveSaasConfig: (config: SaaSConfig): void => {
+    initializeDB();
+    localStorage.setItem(KEYS.SAAS_CONFIG, JSON.stringify(config));
+    
+    // Supabase Sync (Background)
+    if (supabase) {
+      supabase.from('saas_config').upsert({
+        id: 1,
+        monthly_price: config.monthly_price,
+        quarterly_price: config.quarterly_price,
+        yearly_price: config.yearly_price
+      }).then(({ error }) => {
+        if (error) console.error('Supabase saveSaasConfig error:', error);
+      });
     }
   }
 };
