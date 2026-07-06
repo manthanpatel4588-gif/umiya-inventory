@@ -663,28 +663,106 @@ export const db = {
         return true;
       }
 
-      // If remote database has data, pull it down to sync our local device storage
-      localStorage.setItem(KEYS.USERS, JSON.stringify(users));
+      // If remote database has data, pull and merge bi-directionally
+      // This protects locally added data from being erased on page load sync!
+      
+      // 1. Sync USERS
+      const localUsers = db.getUsers();
+      const remoteUserIds = new Set(users.map((u: User) => u.id));
+      const usersToPush = localUsers.filter((u: User) => !remoteUserIds.has(u.id));
+      if (usersToPush.length > 0) {
+        await supabase.from('users').upsert(usersToPush);
+      }
+      const mergedUsers = [...users];
+      localUsers.forEach((lu: User) => {
+        if (!remoteUserIds.has(lu.id)) mergedUsers.push(lu);
+      });
+      localStorage.setItem(KEYS.USERS, JSON.stringify(mergedUsers));
 
+      // 2. Sync PRODUCTS
       const { data: products, error: pErr } = await supabase.from('products').select('*');
       if (pErr) throw pErr;
-      if (products) localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(products));
+      if (products) {
+        const localProducts = JSON.parse(localStorage.getItem(KEYS.PRODUCTS) || '[]');
+        const remoteProductIds = new Set(products.map((p: Product) => p.id));
+        const productsToPush = localProducts.filter((p: Product) => !remoteProductIds.has(p.id));
+        if (productsToPush.length > 0) {
+          await supabase.from('products').upsert(productsToPush);
+        }
+        const mergedProducts = [...products];
+        localProducts.forEach((lp: Product) => {
+          if (!remoteProductIds.has(lp.id)) mergedProducts.push(lp);
+        });
+        localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(mergedProducts));
+      }
 
+      // 3. Sync SUPPLIERS
       const { data: suppliers, error: sErr } = await supabase.from('suppliers').select('*');
       if (sErr) throw sErr;
-      if (suppliers) localStorage.setItem(KEYS.SUPPLIERS, JSON.stringify(suppliers));
+      if (suppliers) {
+        const localSuppliers = JSON.parse(localStorage.getItem(KEYS.SUPPLIERS) || '[]');
+        const remoteSupplierIds = new Set(suppliers.map((s: Supplier) => s.id));
+        const suppliersToPush = localSuppliers.filter((s: Supplier) => !remoteSupplierIds.has(s.id));
+        if (suppliersToPush.length > 0) {
+          await supabase.from('suppliers').upsert(suppliersToPush);
+        }
+        const mergedSuppliers = [...suppliers];
+        localSuppliers.forEach((ls: Supplier) => {
+          if (!remoteSupplierIds.has(ls.id)) mergedSuppliers.push(ls);
+        });
+        localStorage.setItem(KEYS.SUPPLIERS, JSON.stringify(mergedSuppliers));
+      }
 
+      // 4. Sync PURCHASES
       const { data: purchases, error: purErr } = await supabase.from('purchases').select('*');
       if (purErr) throw purErr;
-      if (purchases) localStorage.setItem(KEYS.PURCHASES, JSON.stringify(purchases));
+      if (purchases) {
+        const localPurchases = JSON.parse(localStorage.getItem(KEYS.PURCHASES) || '[]');
+        const remotePurchaseIds = new Set(purchases.map((p: Purchase) => p.id));
+        const purchasesToPush = localPurchases.filter((p: Purchase) => !remotePurchaseIds.has(p.id));
+        if (purchasesToPush.length > 0) {
+          await supabase.from('purchases').upsert(purchasesToPush);
+        }
+        const mergedPurchases = [...purchases];
+        localPurchases.forEach((lp: Purchase) => {
+          if (!remotePurchaseIds.has(lp.id)) mergedPurchases.push(lp);
+        });
+        localStorage.setItem(KEYS.PURCHASES, JSON.stringify(mergedPurchases));
+      }
 
+      // 5. Sync SALES
       const { data: sales, error: saleErr } = await supabase.from('sales').select('*');
       if (saleErr) throw saleErr;
-      if (sales) localStorage.setItem(KEYS.SALES, JSON.stringify(sales));
+      if (sales) {
+        const localSales = JSON.parse(localStorage.getItem(KEYS.SALES) || '[]');
+        const remoteSaleIds = new Set(sales.map((s: Sale) => s.id));
+        const salesToPush = localSales.filter((s: Sale) => !remoteSaleIds.has(s.id));
+        if (salesToPush.length > 0) {
+          await supabase.from('sales').upsert(salesToPush);
+        }
+        const mergedSales = [...sales];
+        localSales.forEach((ls: Sale) => {
+          if (!remoteSaleIds.has(ls.id)) mergedSales.push(ls);
+        });
+        localStorage.setItem(KEYS.SALES, JSON.stringify(mergedSales));
+      }
 
+      // 6. Sync AUDIT LOGS
       const { data: logs, error: lErr } = await supabase.from('audit_logs').select('*');
       if (lErr) throw lErr;
-      if (logs) localStorage.setItem(KEYS.AUDIT_LOGS, JSON.stringify(logs));
+      if (logs) {
+        const localLogs = db.getAuditLogs();
+        const remoteLogIds = new Set(logs.map((l: AuditLog) => l.id));
+        const logsToPush = localLogs.filter((l: AuditLog) => !remoteLogIds.has(l.id));
+        if (logsToPush.length > 0) {
+          await supabase.from('audit_logs').upsert(logsToPush);
+        }
+        const mergedLogs = [...logs];
+        localLogs.forEach((ll: AuditLog) => {
+          if (!remoteLogIds.has(ll.id)) mergedLogs.push(ll);
+        });
+        localStorage.setItem(KEYS.AUDIT_LOGS, JSON.stringify(mergedLogs));
+      }
 
       // Pull SaaS Config if available
       try {
