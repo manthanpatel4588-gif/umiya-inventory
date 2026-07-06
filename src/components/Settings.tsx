@@ -21,6 +21,7 @@ export const Settings: React.FC<SettingsProps> = ({ langMode, currentUser }) => 
   const [quarterlyPrice, setQuarterlyPrice] = useState(() => db.getSaasConfig().quarterly_price.toString());
   const [yearlyPrice, setYearlyPrice] = useState(() => db.getSaasConfig().yearly_price.toString());
   const [priceSuccess, setPriceSuccess] = useState('');
+  const [syncError] = useState(() => localStorage.getItem('umiya_supabase_sync_error') || '');
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -188,6 +189,21 @@ export const Settings: React.FC<SettingsProps> = ({ langMode, currentUser }) => 
           </div>
           <span className={`w-3.5 h-3.5 rounded-full ${isSupabaseConfigured() ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
         </div>
+
+        {syncError && (
+          <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-semibold space-y-1">
+            <p className="font-bold flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>Supabase Cloud Sync Warning:</span>
+            </p>
+            <p className="font-mono text-[10px] bg-white p-2 rounded-lg border border-red-100 break-all select-all">
+              {syncError}
+            </p>
+            <p className="text-[10px] text-slate-500 font-normal mt-1 leading-normal">
+              Usually indicates an RLS policy block or column schema difference. Make sure your tables and columns match the frontend configuration.
+            </p>
+          </div>
+        )}
 
         {/* Configuration Form */}
         <form onSubmit={handleSave} className="space-y-4 pt-2">

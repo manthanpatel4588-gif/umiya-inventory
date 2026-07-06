@@ -778,10 +778,12 @@ export const db = {
         console.warn('Sync SaaS Config skip/error:', cfgErr);
       }
 
+      localStorage.removeItem('umiya_supabase_sync_error');
       console.log('Supabase sync completed successfully!');
       return true;
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error syncing from Supabase:', err);
+      localStorage.setItem('umiya_supabase_sync_error', err.message || JSON.stringify(err));
       return false;
     }
   },
