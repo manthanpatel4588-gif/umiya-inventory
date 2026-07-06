@@ -21,6 +21,7 @@ import { Database, AlertTriangle, UserCheck, Lock } from 'lucide-react';
 function App() {
   // Authentication State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [syncKey, setSyncKey] = useState(0);
 
   // Active Navigation Panel
   const [currentView, setCurrentView] = useState<string>('dashboard');
@@ -55,6 +56,7 @@ function App() {
     const syncCloud = async () => {
       const synced = await db.syncFromSupabase();
       if (synced) {
+        setSyncKey(prev => prev + 1); // Trigger view re-rendering with new local storage data
         const session = sessionStorage.getItem('umiya_active_user');
         if (session) {
           const parsed = JSON.parse(session);
@@ -190,23 +192,23 @@ function App() {
   const renderOwnerView = () => {
     switch (currentView) {
       case 'dashboard':
-        return <Dashboard langMode={langMode} onNavigate={setCurrentView} currentUser={currentUser} />;
+        return <Dashboard key={syncKey} langMode={langMode} onNavigate={setCurrentView} currentUser={currentUser} />;
       case 'products':
-        return <ProductManager langMode={langMode} currentUser={currentUser} />;
+        return <ProductManager key={syncKey} langMode={langMode} currentUser={currentUser} />;
       case 'purchases':
-        return <PurchaseEntry langMode={langMode} currentUser={currentUser} />;
+        return <PurchaseEntry key={syncKey} langMode={langMode} currentUser={currentUser} />;
       case 'sales':
-        return <SalesEntry langMode={langMode} currentUser={currentUser} />;
+        return <SalesEntry key={syncKey} langMode={langMode} currentUser={currentUser} />;
       case 'suppliers':
-        return <SupplierManager langMode={langMode} currentUser={currentUser} />;
+        return <SupplierManager key={syncKey} langMode={langMode} currentUser={currentUser} />;
       case 'reports':
-        return <Reports langMode={langMode} currentUser={currentUser} />;
+        return <Reports key={syncKey} langMode={langMode} currentUser={currentUser} />;
       case 'profile':
-        return <ProfileSettings currentUser={currentUser} setCurrentUser={setCurrentUser} langMode={langMode} />;
+        return <ProfileSettings key={syncKey} currentUser={currentUser} setCurrentUser={setCurrentUser} langMode={langMode} />;
       case 'settings':
-        return <Settings langMode={langMode} currentUser={currentUser} />;
+        return <Settings key={syncKey} langMode={langMode} currentUser={currentUser} />;
       default:
-        return <Dashboard langMode={langMode} onNavigate={setCurrentView} currentUser={currentUser} />;
+        return <Dashboard key={syncKey} langMode={langMode} onNavigate={setCurrentView} currentUser={currentUser} />;
     }
   };
 
