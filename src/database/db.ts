@@ -671,7 +671,8 @@ export const db = {
       const remoteUserIds = new Set(users.map((u: User) => u.id));
       const usersToPush = localUsers.filter((u: User) => !remoteUserIds.has(u.id));
       if (usersToPush.length > 0) {
-        await supabase.from('users').upsert(usersToPush);
+        const { error: errUsers } = await supabase.from('users').upsert(usersToPush);
+        if (errUsers) throw errUsers;
       }
       const mergedUsers = [...users];
       localUsers.forEach((lu: User) => {
@@ -687,7 +688,8 @@ export const db = {
         const remoteProductIds = new Set(products.map((p: Product) => p.id));
         const productsToPush = localProducts.filter((p: Product) => !remoteProductIds.has(p.id));
         if (productsToPush.length > 0) {
-          await supabase.from('products').upsert(productsToPush);
+          const { error: errProds } = await supabase.from('products').upsert(productsToPush);
+          if (errProds) throw errProds;
         }
         const mergedProducts = [...products];
         localProducts.forEach((lp: Product) => {
@@ -704,7 +706,8 @@ export const db = {
         const remoteSupplierIds = new Set(suppliers.map((s: Supplier) => s.id));
         const suppliersToPush = localSuppliers.filter((s: Supplier) => !remoteSupplierIds.has(s.id));
         if (suppliersToPush.length > 0) {
-          await supabase.from('suppliers').upsert(suppliersToPush);
+          const { error: errSups } = await supabase.from('suppliers').upsert(suppliersToPush);
+          if (errSups) throw errSups;
         }
         const mergedSuppliers = [...suppliers];
         localSuppliers.forEach((ls: Supplier) => {
@@ -721,7 +724,8 @@ export const db = {
         const remotePurchaseIds = new Set(purchases.map((p: Purchase) => p.id));
         const purchasesToPush = localPurchases.filter((p: Purchase) => !remotePurchaseIds.has(p.id));
         if (purchasesToPush.length > 0) {
-          await supabase.from('purchases').upsert(purchasesToPush);
+          const { error: errPurch } = await supabase.from('purchases').upsert(purchasesToPush);
+          if (errPurch) throw errPurch;
         }
         const mergedPurchases = [...purchases];
         localPurchases.forEach((lp: Purchase) => {
@@ -738,7 +742,8 @@ export const db = {
         const remoteSaleIds = new Set(sales.map((s: Sale) => s.id));
         const salesToPush = localSales.filter((s: Sale) => !remoteSaleIds.has(s.id));
         if (salesToPush.length > 0) {
-          await supabase.from('sales').upsert(salesToPush);
+          const { error: errSales } = await supabase.from('sales').upsert(salesToPush);
+          if (errSales) throw errSales;
         }
         const mergedSales = [...sales];
         localSales.forEach((ls: Sale) => {
@@ -755,7 +760,8 @@ export const db = {
         const remoteLogIds = new Set(logs.map((l: AuditLog) => l.id));
         const logsToPush = localLogs.filter((l: AuditLog) => !remoteLogIds.has(l.id));
         if (logsToPush.length > 0) {
-          await supabase.from('audit_logs').upsert(logsToPush);
+          const { error: errLogs } = await supabase.from('audit_logs').upsert(logsToPush);
+          if (errLogs) throw errLogs;
         }
         const mergedLogs = [...logs];
         localLogs.forEach((ll: AuditLog) => {
