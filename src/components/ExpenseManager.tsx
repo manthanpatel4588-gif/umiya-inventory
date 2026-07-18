@@ -22,7 +22,7 @@ export const ExpenseManager: React.FC<ExpenseManagerProps> = ({ langMode, curren
 
   // Form input states
   const [expenseDate, setExpenseDate] = useState(() => new Date().toISOString().substring(0, 10));
-  const [category, setCategory] = useState<string>(EXPENSE_CATEGORIES[0]);
+  const [category, setCategory] = useState<string>('');
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [paymentMode, setPaymentMode] = useState<'Cash' | 'UPI'>('Cash');
@@ -44,6 +44,10 @@ export const ExpenseManager: React.FC<ExpenseManagerProps> = ({ langMode, curren
     setErrorMsg('');
 
     const amt = parseFloat(amount);
+    if (!category.trim()) {
+      setErrorMsg(langMode === 'gu' ? 'કૃપા કરીને ખર્ચનો પ્રકાર દાખલ કરો' : 'Please enter expense category');
+      return;
+    }
     if (!description.trim()) {
       setErrorMsg(langMode === 'gu' ? 'કૃપા કરીને ખર્ચની વિગત દાખલ કરો' : 'Please enter expense description');
       return;
@@ -59,7 +63,7 @@ export const ExpenseManager: React.FC<ExpenseManagerProps> = ({ langMode, curren
         shop_id: currentUser.id,
         expense_date: new Date(expenseDate).toISOString(),
         description: description.trim(),
-        category,
+        category: category.trim(),
         amount: amt,
         payment_mode: paymentMode
       };
@@ -69,7 +73,7 @@ export const ExpenseManager: React.FC<ExpenseManagerProps> = ({ langMode, curren
       // Reset inputs
       setDescription('');
       setAmount('');
-      setCategory(EXPENSE_CATEGORIES[0]);
+      setCategory('');
       setPaymentMode('Cash');
 
       setSuccessMsg(langMode === 'gu' ? 'ખર્ચ સફળતાપૂર્વક ઉમેરવામાં આવ્યો છે!' : 'Expense saved successfully!');
@@ -207,22 +211,26 @@ export const ExpenseManager: React.FC<ExpenseManagerProps> = ({ langMode, curren
               />
             </div>
 
-            {/* Category Dropdown */}
+            {/* Category Manual Input */}
             <div className="space-y-1">
               <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
                 <Tag className="w-3.5 h-3.5 text-slate-400" />
                 <span>Category / ખર્ચનો પ્રકાર</span>
               </label>
-              <select
-                value={category}
+              <input
+                type="text"
+                list="expense-categories-list"
                 disabled={isExpired}
+                placeholder="e.g. Rent, Salary, Tea, light bill..."
+                value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500"
-              >
+              />
+              <datalist id="expense-categories-list">
                 {EXPENSE_CATEGORIES.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
+                  <option key={cat} value={cat} />
                 ))}
-              </select>
+              </datalist>
             </div>
 
             {/* Description Input */}

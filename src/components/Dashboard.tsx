@@ -42,6 +42,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate, curr
   const products = useMemo(() => db.getProducts(currentUser.id), [currentUser.id]);
   const sales = useMemo(() => db.getSales(currentUser.id), [currentUser.id]);
   const purchases = useMemo(() => db.getPurchases(currentUser.id), [currentUser.id]);
+  const expenses = useMemo(() => db.getExpenses(currentUser.id), [currentUser.id]);
 
   // Helpers for calculations
   const stats = useMemo(() => {
@@ -58,7 +59,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate, curr
     const totalStockValueCost = products.reduce((acc, p) => acc + (p.stock_quantity * p.purchase_price), 0);
     const totalStockValueRetail = products.reduce((acc, p) => acc + (p.stock_quantity * p.selling_price), 0);
 
-    // 4. Today's Sales & Today's Profit
+    // 4. Operational Expenses Today & This Month
+    let todayExpensesVal = 0;
+    let monthlyExpensesVal = 0;
+    expenses.forEach(e => {
+      const eDate = e.expense_date.split('T')[0];
+      if (eDate === todayStr) {
+        todayExpensesVal += e.amount;
+      }
+      if (e.expense_date.startsWith(currentMonthStr)) {
+        monthlyExpensesVal += e.amount;
+      }
+    });
+
+    // 5. Today's Sales & Today's Profit (before operational expenses)
     let todaySalesVal = 0;
     let todayProfitVal = 0;
     sales.forEach(s => {
@@ -68,7 +82,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate, curr
       }
     });
 
-    // 5. Monthly Sales & Monthly Profit
+    // 6. Monthly Sales & Monthly Profit (before operational expenses)
     let monthlySalesVal = 0;
     let monthlyProfitVal = 0;
     sales.forEach(s => {
@@ -78,7 +92,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate, curr
       }
     });
 
-    // 6. Cash Flow Collection Breakdowns
+    // 7. Cash Flow Collection Breakdowns
     let totalCashVal = 0;
     let totalUpiVal = 0;
     let totalUdhaarVal = 0;
@@ -109,7 +123,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate, curr
       }
     });
 
-    // 7. Low stock products
+    // 8. Unique Customer Metrics
+    const totalCustomersSet = new Set<string>();
+    const monthlyCustomersSet = new Set<string>();
+    const todayCustomersSet = new Set<string>();
+
+    sales.forEach(s => {
+      const mob = s.customer_mobile ? s.customer_mobile.trim() : '';
+      const nm = s.customer_name ? s.customer_name.trim() : '';
+      const key = mob || nm || 'Walk-in';
+
+      if (key === 'Walk-in' || (!mob && !nm)) return;
+
+      totalCustomersSet.add(key);
+
+      if (s.sale_date.startsWith(todayStr)) {
+        todayCustomersSet.add(key);
+      }
+      if (s.sale_date.startsWith(currentMonthStr)) {
+        monthlyCustomersSet.add(key);
+      }
+    });
+
+    // 9. Low stock products
     const lowStockItems = products.filter(p => p.stock_quantity <= p.minimum_stock);
 
     return {
@@ -118,15 +154,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate, curr
       totalStockValueCost,
       totalStockValueRetail,
       todaySales: todaySalesVal,
-      todayProfit: todayProfitVal,
+      todayProfit: todayProfitVal - todayExpensesVal, // Net Profit
       monthlySales: monthlySalesVal,
-      monthlyProfit: monthlyProfitVal,
+      monthlyProfit: monthlyProfitVal - monthlyExpensesVal, // Net Profit
       cashCollection: totalCashVal,
       upiCollection: totalUpiVal,
       udhaarOutstanding: Math.max(0, totalUdhaarVal),
+      totalCustomers: totalCustomersSet.size,
+      thisMonthCustomers: monthlyCustomersSet.size,
+      todayCustomers: todayCustomersSet.size,
       lowStockItems
     };
-  }, [products, sales]);
+  }, [products, sales, expenses]);
 
   // Top Selling Products Calculations (Grouped by product_id)
   const topSelling = useMemo(() => {
@@ -215,14 +254,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate, curr
           profit += s.profit;
         }
       });
+      // Deduct monthly operational expenses
+      let monthExpenses = 0;
+      expenses.forEach(e => {
+        if (e.expense_date.startsWith(m)) {
+          monthExpenses += e.amount;
+        }
+      });
       const dObj = new Date(m + "-02");
       const label = dObj.toLocaleDateString(langMode === 'gu' ? 'gu-IN' : 'en-US', { month: 'short', year: '2-digit' });
       return {
         month: label,
-        Profit: profit
+        Profit: Math.max(0, profit - monthExpenses)
       };
     });
-  }, [sales, langMode]);
+  }, [sales, expenses, langMode]);
 
   // Chart Data: Category-wise Sales
   const categoryChartData = useMemo(() => {
@@ -374,6 +420,42 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate, curr
             <p className="text-xl font-black text-amber-600">₹{stats.udhaarOutstanding.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
           </div>
           <span className="p-2.5 rounded-xl bg-amber-50 text-amber-600">
+            <Users className="w-5 h-5" />
+          </span>
+        </div>
+      </div>
+
+      {/* Customer Traffic Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Today's Customers */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between group hover:border-indigo-100 transition-all">
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Today's Customers / આજના ગ્રાહકો</p>
+            <p className="text-xl font-black text-slate-800">{stats.todayCustomers}</p>
+          </div>
+          <span className="p-2.5 rounded-xl bg-indigo-50 text-indigo-600">
+            <Users className="w-5 h-5" />
+          </span>
+        </div>
+
+        {/* This Month's Customers */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between group hover:border-violet-100 transition-all">
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">This Month's Customers / આ મહિનાના ગ્રાહકો</p>
+            <p className="text-xl font-black text-slate-800">{stats.thisMonthCustomers}</p>
+          </div>
+          <span className="p-2.5 rounded-xl bg-violet-50 text-violet-600">
+            <Users className="w-5 h-5" />
+          </span>
+        </div>
+
+        {/* Total Registered Customers */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between group hover:border-sky-100 transition-all">
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Customers / કુલ ગ્રાહકો</p>
+            <p className="text-xl font-black text-slate-800">{stats.totalCustomers}</p>
+          </div>
+          <span className="p-2.5 rounded-xl bg-sky-50 text-sky-600">
             <Users className="w-5 h-5" />
           </span>
         </div>

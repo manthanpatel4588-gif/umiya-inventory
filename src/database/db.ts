@@ -785,18 +785,44 @@ export const db = {
       // If remote database has data, pull and merge bi-directionally
       // This protects locally added data from being erased on page load sync!
       
-      // 1. Sync USERS
+      // 1. Sync USERS (smart merge to prevent local profile edits from disappearing)
       const localUsers = db.getUsers();
-      const remoteUserIds = new Set(users.map((u: User) => u.id));
-      const usersToPush = localUsers.filter((u: User) => !remoteUserIds.has(u.id));
+      const remoteUserMap = new Map(users.map((u: User) => [u.id, u]));
+      
+      const usersToPush: User[] = [];
+      const mergedUsers: User[] = [];
+
+      localUsers.forEach((lu: User) => {
+        const ru = remoteUserMap.get(lu.id);
+        if (!ru) {
+          usersToPush.push(lu);
+          mergedUsers.push(lu);
+        } else {
+          // Merge remote and local, prioritizing local details
+          const mergedUser: User = {
+            ...ru,
+            ...lu
+          };
+          mergedUsers.push(mergedUser);
+          
+          const hasChanges = JSON.stringify(ru) !== JSON.stringify(mergedUser);
+          if (hasChanges) {
+            usersToPush.push(mergedUser);
+          }
+        }
+      });
+
+      const localUserIds = new Set(localUsers.map(u => u.id));
+      users.forEach((ru: User) => {
+        if (!localUserIds.has(ru.id)) {
+          mergedUsers.push(ru);
+        }
+      });
+
       if (usersToPush.length > 0) {
         const { error: errUsers } = await supabase.from('users').upsert(usersToPush);
-        if (errUsers) throw errUsers;
+        if (errUsers) console.error('Sync push users error:', errUsers);
       }
-      const mergedUsers = [...users];
-      localUsers.forEach((lu: User) => {
-        if (!remoteUserIds.has(lu.id)) mergedUsers.push(lu);
-      });
       localStorage.setItem(KEYS.USERS, JSON.stringify(mergedUsers));
 
       // 2. Sync PRODUCTS

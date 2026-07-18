@@ -7,9 +7,10 @@ import {
   DollarSign, 
   Layers, 
   TrendingUp, 
-  PieChart as PieIcon
+  PieChart as PieIcon,
+  Coins
 } from 'lucide-react';
-import { Product, Purchase, Sale, db, User as UserType } from '../database/db';
+import { Product, Purchase, Sale, Expense, db, User as UserType } from '../database/db';
 import { LanguageMode, t } from '../utils/translations';
 
 interface ReportsProps {
@@ -17,12 +18,13 @@ interface ReportsProps {
   currentUser: UserType;
 }
 
-type ReportType = 'sales' | 'purchases' | 'profit' | 'stock' | 'category';
+type ReportType = 'sales' | 'purchases' | 'profit' | 'stock' | 'category' | 'expenses';
 
 export const Reports: React.FC<ReportsProps> = ({ langMode, currentUser }) => {
   const [products] = useState<Product[]>(() => db.getProducts(currentUser.id));
   const [purchases] = useState<Purchase[]>(() => db.getPurchases(currentUser.id));
   const [sales] = useState<Sale[]>(() => db.getSales(currentUser.id));
+  const [expenses] = useState<Expense[]>(() => db.getExpenses(currentUser.id));
 
   const [reportType, setReportType] = useState<ReportType>('sales');
   
@@ -84,6 +86,14 @@ export const Reports: React.FC<ReportsProps> = ({ langMode, currentUser }) => {
     });
   }, [products]);
 
+  // EXPENSES REPORT DATA
+  const expensesReportData = useMemo(() => {
+    return expenses.filter(e => {
+      const eDate = e.expense_date.split('T')[0];
+      return eDate >= dateLimits.start && eDate <= dateLimits.end;
+    });
+  }, [expenses, dateLimits]);
+
   // CATEGORY REPORT DATA
   const categoryReportData = useMemo(() => {
     const map: Record<string, { totalProducts: number; totalStock: number; stockValue: number; salesVal: number; profitVal: number }> = {};
@@ -141,15 +151,29 @@ export const Reports: React.FC<ReportsProps> = ({ langMode, currentUser }) => {
     }
     if (reportType === 'profit') {
       const totalSalesAmt = salesReportData.reduce((acc, s) => acc + (s.quantity * s.sale_price), 0);
-      const totalProfit = salesReportData.reduce((acc, s) => acc + s.profit, 0);
-      const profitMargin = totalSalesAmt > 0 ? (totalProfit / totalSalesAmt) * 100 : 0;
+      const totalSalesProfit = salesReportData.reduce((acc, s) => acc + s.profit, 0);
+      const totalExpensesAmt = expensesReportData.reduce((acc, e) => acc + e.amount, 0);
+      const netProfit = totalSalesProfit - totalExpensesAmt;
+      const profitMargin = totalSalesAmt > 0 ? (netProfit / totalSalesAmt) * 100 : 0;
       return {
-        primaryLabel: langMode === 'gu' ? 'કુલ ચોખ્ખો નફો' : 'Net Margin Profit',
-        primaryVal: `₹${totalProfit.toLocaleString()}`,
-        secondaryLabel: langMode === 'gu' ? 'નફાની સરેરાશ ટકાવારી' : 'Average Net Margin',
-        secondaryVal: `${profitMargin.toFixed(1)}%`,
-        accentColor: 'text-emerald-600',
-        accentBg: 'bg-emerald-50'
+        primaryLabel: langMode === 'gu' ? 'ચોખ્ખો નફો (ખર્ચ બાદ)' : 'Net Profit (After Expenses)',
+        primaryVal: `₹${netProfit.toLocaleString()}`,
+        secondaryLabel: langMode === 'gu' ? 'કુલ ઓપરેશનલ ખર્ચ' : 'Total Expenses Deducted',
+        secondaryVal: `₹${totalExpensesAmt.toLocaleString()}`,
+        accentColor: netProfit >= 0 ? 'text-emerald-600' : 'text-red-600',
+        accentBg: netProfit >= 0 ? 'bg-emerald-50' : 'bg-red-50'
+      };
+    }
+    if (reportType === 'expenses') {
+      const totalExpensesAmt = expensesReportData.reduce((acc, e) => acc + e.amount, 0);
+      const totalCount = expensesReportData.length;
+      return {
+        primaryLabel: langMode === 'gu' ? 'કુલ ઓપરેશનલ ખર્ચ' : 'Total Operational Expenses',
+        primaryVal: `₹${totalExpensesAmt.toLocaleString()}`,
+        secondaryLabel: langMode === 'gu' ? 'કુલ ખર્ચ વ્યવહારો' : 'Total Expense Transactions',
+        secondaryVal: `${totalCount} entries`,
+        accentColor: 'text-red-600',
+        accentBg: 'bg-red-50'
       };
     }
     const totalQty = stockReportData.reduce((acc, p) => acc + p.stock_quantity, 0);
@@ -162,7 +186,7 @@ export const Reports: React.FC<ReportsProps> = ({ langMode, currentUser }) => {
       accentColor: 'text-blue-600',
       accentBg: 'bg-blue-50'
     };
-  }, [reportType, salesReportData, purchasesReportData, stockReportData, langMode]);
+  }, [reportType, salesReportData, purchasesReportData, stockReportData, expensesReportData, langMode]);
 
   // CSV EXPORT
   const handleExport = () => {
@@ -215,6 +239,15 @@ export const Reports: React.FC<ReportsProps> = ({ langMode, currentUser }) => {
         c.stockValue,
         c.salesVal,
         c.profitVal
+      ]);
+    } else if (reportType === 'expenses') {
+      headers = ['Expense Date', 'Category', 'Description', 'Amount (INR)', 'Payment Mode'];
+      rows = expensesReportData.map(e => [
+        new Date(e.expense_date).toLocaleDateString(),
+        e.category,
+        e.description,
+        e.amount.toFixed(2),
+        e.payment_mode
       ]);
     }
 
@@ -367,7 +400,8 @@ export const Reports: React.FC<ReportsProps> = ({ langMode, currentUser }) => {
             { id: 'purchases', label: langMode === 'gu' ? 'ખરીદી અહેવાલ' : 'Purchase Report', icon: Layers },
             { id: 'profit', label: langMode === 'gu' ? 'નફાકારકતા અહેવાલ' : 'Profit Report', icon: DollarSign },
             { id: 'stock', label: langMode === 'gu' ? 'સ્ટોક ઇન્વેન્ટરી' : 'Stock Inventory', icon: BarChart3 },
-            { id: 'category', label: langMode === 'gu' ? 'કેટેગરી રિપોર્ટ' : 'Category Sales', icon: PieIcon }
+            { id: 'category', label: langMode === 'gu' ? 'કેટેગરી રિપોર્ટ' : 'Category Sales', icon: PieIcon },
+            { id: 'expenses', label: langMode === 'gu' ? 'દુકાન ખર્ચ રિપોર્ટ' : 'Expense Report', icon: Coins }
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = reportType === tab.id;
@@ -649,6 +683,43 @@ export const Reports: React.FC<ReportsProps> = ({ langMode, currentUser }) => {
                     <td className="px-6 py-3 text-right font-bold text-amber-600">₹{c.profitVal.toFixed(2)}</td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          )}
+
+          {reportType === 'expenses' && (
+            <table className="w-full text-left border-collapse text-xs text-slate-650">
+              <thead>
+                <tr className="bg-slate-50 border-b font-bold text-slate-400 uppercase tracking-wider">
+                  <th className="px-6 py-4">Expense Date</th>
+                  <th className="px-6 py-4">Category</th>
+                  <th className="px-6 py-4">Description / વિગત</th>
+                  <th className="px-6 py-4 text-right">Amount (₹)</th>
+                  <th className="px-6 py-4 text-center">Paid Via</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {expensesReportData.length === 0 ? (
+                  <tr><td colSpan={5} className="px-6 py-8 text-center text-slate-400">No expenses recorded for this period.</td></tr>
+                ) : (
+                  expensesReportData.map(e => (
+                    <tr key={e.id} className="hover:bg-slate-50/20">
+                      <td className="px-6 py-3">{new Date(e.expense_date).toLocaleDateString()}</td>
+                      <td className="px-6 py-3 font-semibold text-slate-700">{e.category}</td>
+                      <td className="px-6 py-3 text-slate-500">{e.description}</td>
+                      <td className="px-6 py-3 text-right font-black text-slate-800">₹{e.amount.toFixed(2)}</td>
+                      <td className="px-6 py-3 text-center">
+                        <span className={`px-2 py-0.5 rounded text-[8px] font-extrabold uppercase ${
+                          e.payment_mode === 'UPI' 
+                            ? 'bg-blue-50 text-blue-600 border border-blue-100' 
+                            : 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                        }`}>
+                          {e.payment_mode}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           )}
