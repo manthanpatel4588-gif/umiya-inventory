@@ -38,7 +38,15 @@ function App() {
     // Check session
     const activeSession = sessionStorage.getItem('umiya_active_user');
     if (activeSession) {
-      setCurrentUser(JSON.parse(activeSession));
+      const parsed = JSON.parse(activeSession);
+      const usersList = db.getUsers();
+      const matched = usersList.find(u => u.id === parsed.id);
+      if (matched) {
+        setCurrentUser(matched);
+        sessionStorage.setItem('umiya_active_user', JSON.stringify(matched));
+      } else {
+        setCurrentUser(parsed);
+      }
     } else {
       // Check remember me auto-login
       const remembered = localStorage.getItem('umiya_remembered_user');

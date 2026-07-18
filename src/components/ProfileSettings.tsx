@@ -55,8 +55,9 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
     };
 
     const updated = db.saveUser(payload);
-    // Update active context user
+    // Update active context user and session storage
     setCurrentUser(payload);
+    sessionStorage.setItem('umiya_active_user', JSON.stringify(payload));
     
     db.addAuditLog(currentUser.email, 'Shop Profile Settings Updated', currentUser.id);
     setSuccessMsg(langMode === 'gu' ? 'પ્રોફાઇલ વિગતો સફળતાપૂર્વક સાચવી લેવામાં આવી છે!' : 'Shop Profile updated successfully!');
