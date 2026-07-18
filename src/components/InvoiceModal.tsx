@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { X, Printer, Share2, FileText } from 'lucide-react';
 import { Sale, db } from '../database/db';
 import { LanguageMode } from '../utils/translations';
+import { jsPDF } from 'jspdf';
 
 interface InvoiceModalProps {
   sale: Sale | null;
@@ -116,8 +117,172 @@ Thank you for your business!
     window.open(whatsappUrl, '_blank');
   };
 
+  // WhatsApp PDF Share Generator
+  const handleWhatsAppPDFShare = () => {
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    // Header branding
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(22);
+    doc.text(shopProfile?.shop_name.toUpperCase() || 'UMIYA INVENTORY SYSTEM', 105, 20, { align: 'center' });
+    
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.text(shopProfile?.owner_name || 'Wholesale & General Store', 105, 26, { align: 'center' });
+    doc.text(`${shopProfile?.address || 'Gujarat, India'}`, 105, 31, { align: 'center' });
+    
+    let headerY = 36;
+    if (shopProfile?.gst_number) {
+      doc.text(`GSTIN: ${shopProfile.gst_number}`, 105, headerY, { align: 'center' });
+      headerY += 5;
+    }
+    if (shopProfile?.fssai_number) {
+      doc.text(`FSSAI No: ${shopProfile.fssai_number}`, 105, headerY, { align: 'center' });
+      headerY += 5;
+    }
+    doc.text(`Mobile: +91 ${shopProfile?.mobile}`, 105, headerY, { align: 'center' });
+    headerY += 8;
+
+    // Draw line
+    doc.line(15, headerY, 195, headerY);
+    headerY += 8;
+
+    // Invoice details
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text(`Invoice No: ${sale.invoice_number}`, 15, headerY);
+    doc.text(`Customer Details / ગ્રાહક:`, 120, headerY);
+    headerY += 5;
+    
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.text(`Date/Time: ${formattedDate}`, 15, headerY);
+    doc.text(`Name: ${sale.customer_name || 'Walk-in Customer'}`, 120, headerY);
+    headerY += 5;
+    if (sale.customer_mobile) {
+      doc.text(`Mobile: +91 ${sale.customer_mobile}`, 120, headerY);
+      headerY += 5;
+    }
+    if (sale.customer_address) {
+      doc.text(`Address: ${sale.customer_address}`, 120, headerY);
+      headerY += 5;
+    }
+    headerY += 5;
+
+    // Draw line
+    doc.line(15, headerY, 195, headerY);
+    headerY += 8;
+
+    // Table columns
+    doc.setFont('Helvetica', 'bold');
+    doc.text('Item Details / વિગત', 15, headerY);
+    doc.text('Qty', 85, headerY, { align: 'center' });
+    doc.text('Rate (Ex. GST)', 115, headerY, { align: 'right' });
+    doc.text('GST Rate', 145, headerY, { align: 'center' });
+    doc.text('Total (Inc. GST)', 195, headerY, { align: 'right' });
+    headerY += 3;
+    doc.line(15, headerY, 195, headerY);
+    headerY += 6;
+
+    // Table rows
+    doc.setFont('Helvetica', 'normal');
+    invoiceTotals.items.forEach(item => {
+      doc.text(item.product_name, 15, headerY);
+      doc.text(`${item.quantity} ${item.unit}`, 85, headerY, { align: 'center' });
+      doc.text(`Rs. ${item.singleBase.toFixed(2)}`, 115, headerY, { align: 'right' });
+      doc.text(`${item.gstRate}%`, 145, headerY, { align: 'center' });
+      doc.text(`Rs. ${item.total.toFixed(2)}`, 195, headerY, { align: 'right' });
+      headerY += 6;
+    });
+
+    headerY += 2;
+    doc.line(15, headerY, 195, headerY);
+    headerY += 6;
+
+    // Totals breakout
+    doc.text('Central GST (CGST):', 120, headerY);
+    doc.text(`Rs. ${invoiceTotals.cgst.toFixed(2)}`, 195, headerY, { align: 'right' });
+    headerY += 5;
+    
+    doc.text('State GST (SGST):', 120, headerY);
+    doc.text(`Rs. ${invoiceTotals.sgst.toFixed(2)}`, 195, headerY, { align: 'right' });
+    headerY += 7;
+
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text('Grand Total / કુલ રકમ:', 120, headerY);
+    doc.text(`Rs. ${invoiceTotals.grandTotal.toFixed(2)}`, 195, headerY, { align: 'right' });
+    headerY += 15;
+
+    // Terms & footer
+    doc.setFont('Helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.text('Thank you for your business! / પધારવા બદલ આભાર!', 105, headerY, { align: 'center' });
+    headerY += 4;
+    doc.text('Subject to local jurisdiction. Goods once sold will not be returned.', 105, headerY, { align: 'center' });
+    headerY += 4;
+    doc.text('Powered by Umiya SaaS Software', 105, headerY, { align: 'center' });
+
+    // Download/Save PDF
+    doc.save(`Invoice_${sale.invoice_number}.pdf`);
+
+    // WhatsApp Direct routing
+    const messageText = `*${shopProfile?.shop_name.toUpperCase() || 'UMIYA INVENTORY'}*
+*INVOICE BILL / બીલ*
+*Invoice No:* ${sale.invoice_number}
+*Grand Total:* *₹${invoiceTotals.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}*
+
+Hello! We have shared your Invoice Bill. Please attach and send the downloaded PDF file on your device. Thank you! 🙏`;
+    
+    const mobileNo = sale.customer_mobile ? sale.customer_mobile.trim() : '';
+    const cleanMobile = mobileNo.startsWith('+') ? mobileNo.replace(/\D/g, '') : `91${mobileNo.replace(/\D/g, '')}`;
+    const whatsappUrl = `https://api.whatsapp.com/send?phone=${cleanMobile}&text=${encodeURIComponent(messageText)}`;
+    window.open(whatsappUrl, '_blank');
+  };
+
   return (
     <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+      <style>{`
+        #printable-invoice-content {
+          position: relative;
+        }
+        #printable-invoice-content::before {
+          content: "";
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background-image: url('/codivra_logo.png');
+          background-repeat: no-repeat;
+          background-position: center;
+          background-size: 70% auto;
+          opacity: 0.04;
+          pointer-events: none;
+          z-index: 0;
+        }
+        @media print {
+          #printable-invoice-content::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url('/codivra_logo.png') !important;
+            background-repeat: no-repeat !important;
+            background-position: center !important;
+            background-size: 70% auto !important;
+            opacity: 0.04 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+        }
+      `}</style>
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl border border-slate-100 overflow-hidden transform transition-all">
         
         {/* Navigation Action bar */}
@@ -156,7 +321,7 @@ Thank you for your business!
               {shopProfile?.address || 'Gujarat, India'} {shopProfile?.gst_number ? `• GSTIN: ${shopProfile.gst_number}` : ''}
             </p>
             <p className="text-[10px] text-slate-400 font-semibold">
-              Mobile: +91 {shopProfile?.mobile}
+              Mobile: +91 {shopProfile?.mobile} {shopProfile?.fssai_number ? `• FSSAI No: ${shopProfile.fssai_number}` : ''}
             </p>
           </div>
 
@@ -247,6 +412,15 @@ Thank you for your business!
           >
             <Share2 className="w-3.5 h-3.5" />
             <span>WhatsApp / વોટ્સએપ</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleWhatsAppPDFShare}
+            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-750 hover:bg-emerald-850 text-white text-xs font-semibold rounded-xl transition-all shadow-md shadow-emerald-200"
+          >
+            <Share2 className="w-3.5 h-3.5" />
+            <span>WhatsApp PDF / વોટ્સએપ PDF</span>
           </button>
 
           <button

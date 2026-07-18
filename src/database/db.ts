@@ -16,6 +16,7 @@ export interface User {
   status: 'Active' | 'Inactive' | 'Blocked';
   gst_number?: string;
   logo_url?: string;
+  fssai_number?: string;
 }
 
 export interface AuditLog {

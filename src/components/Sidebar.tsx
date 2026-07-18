@@ -44,6 +44,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'purchases', labelKey: 'purchases', icon: PlusCircle },
     { id: 'sales', labelKey: 'sales', icon: ShoppingCart },
     { id: 'suppliers', labelKey: 'suppliers', icon: Users },
+    { id: 'customers', label: 'Customers / ગ્રાહકો', labelKey: 'customers', icon: Users },
     { id: 'reports', labelKey: 'reports', icon: BarChart3 },
     { id: 'profile', label: 'Shop Profile / પ્રોફાઇલ', labelKey: 'profile', icon: Store },
     { id: 'settings', labelKey: 'settings', icon: Settings },

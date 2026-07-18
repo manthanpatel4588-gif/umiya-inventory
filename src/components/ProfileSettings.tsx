@@ -20,6 +20,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
   const [address, setAddress] = useState(currentUser.address);
   const [gstNumber, setGstNumber] = useState(currentUser.gst_number || '');
   const [logoUrl, setLogoUrl] = useState(currentUser.logo_url || '');
+  const [fssaiNumber, setFssaiNumber] = useState(currentUser.fssai_number || '');
   
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -49,7 +50,8 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
       mobile: mobile.trim(),
       address: address.trim(),
       gst_number: gstNumber.trim() || undefined,
-      logo_url: logoUrl.trim() || undefined
+      logo_url: logoUrl.trim() || undefined,
+      fssai_number: fssaiNumber.trim() || undefined
     };
 
     const updated = db.saveUser(payload);
@@ -198,6 +200,22 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
                 value={gstNumber}
                 onChange={(e) => setGstNumber(e.target.value)}
                 placeholder="24XXXXXXXXXXXXX"
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+
+            {/* FSSAI */}
+            <div className="col-span-2 space-y-1">
+              <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
+                <FileCheck className="w-3.5 h-3.5 text-slate-400" />
+                <span>FSSAI License Number / FSSAI લાયસન્સ નંબર</span>
+              </label>
+              <input
+                type="text"
+                maxLength={14}
+                value={fssaiNumber}
+                onChange={(e) => setFssaiNumber(e.target.value.replace(/\D/g, '').slice(0, 14))}
+                placeholder="e.g. 12345678901234 (14 digits)"
                 className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500"
               />
             </div>
