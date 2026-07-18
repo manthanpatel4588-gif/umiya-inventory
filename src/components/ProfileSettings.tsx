@@ -182,7 +182,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
                 type="text"
                 maxLength={10}
                 value={mobile}
-                onChange={(e) => setMobile(e.target.value.replace(/\D/g, ''))}
+                onChange={(e) => setMobile(e.target.value.replace(/\D/g, '').slice(0, 10))}
                 className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500"
               />
             </div>

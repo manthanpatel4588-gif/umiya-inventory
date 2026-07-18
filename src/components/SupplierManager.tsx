@@ -432,7 +432,7 @@ export const SupplierManager: React.FC<SupplierManagerProps> = ({ langMode, curr
                     type="text"
                     maxLength={10}
                     value={formMobile}
-                    onChange={(e) => setFormMobile(e.target.value.replace(/\D/g, ''))}
+                    onChange={(e) => setFormMobile(e.target.value.replace(/\D/g, '').slice(0, 10))}
                     placeholder="10 digit mobile number"
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500"
                   />

@@ -16,7 +16,8 @@ import {
   Plus,
   History,
   Phone,
-  MapPin
+  MapPin,
+  Edit3
 } from 'lucide-react';
 import { Product, Sale, db, User as UserType } from '../database/db';
 import { LanguageMode, t } from '../utils/translations';
@@ -56,6 +57,9 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
 
   // POS Shopping Cart State
   const [cart, setCart] = useState<CartItem[]>([]);
+
+  // Editing Mode state
+  const [editingInvoiceNumber, setEditingInvoiceNumber] = useState<string | null>(null);
 
   // Product Search State inside Form
   const [productSearch, setProductSearch] = useState('');
@@ -162,11 +166,17 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
     setSuccessMsg('');
 
     try {
-      // 1. Pre-generate Invoice Number
-      const allSales = db.getSales(currentUser.id);
-      const uniqueInvoiceNumbers = new Set(allSales.map(s => s.invoice_number));
-      const tenantSalesCount = uniqueInvoiceNumbers.size + 1;
-      const invNumber = `INV-${new Date().getFullYear()}-${String(tenantSalesCount).padStart(4, '0')}`;
+      // 1. Determine Invoice Number (new or editing)
+      let invNumber = editingInvoiceNumber;
+      if (invNumber) {
+        // Revert old inventory levels and delete old records first
+        db.deleteInvoiceSales(invNumber, currentUser.id);
+      } else {
+        const allSales = db.getSales(currentUser.id);
+        const uniqueInvoiceNumbers = new Set(allSales.map(s => s.invoice_number));
+        const tenantSalesCount = uniqueInvoiceNumbers.size + 1;
+        invNumber = `INV-${new Date().getFullYear()}-${String(tenantSalesCount).padStart(4, '0')}`;
+      }
 
       // 2. Loop over cart and write each sale record
       let firstRecordedSale: Sale | null = null;
@@ -194,6 +204,7 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
       setCustomerName('');
       setCustomerMobile('');
       setCustomerAddress('');
+      setEditingInvoiceNumber(null);
       
       // Refresh database lists
       setProducts(db.getProducts(currentUser.id));
@@ -213,23 +224,53 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
     }
   };
 
-  // Cart Calculations (Inclusive of GST)
+  // Start Editing Past Invoice
+  const handleStartEditInvoice = (invoiceNumber: string) => {
+    const allSales = db.getSales(currentUser.id);
+    const invoiceSales = allSales.filter(s => s.invoice_number === invoiceNumber && s.shop_id === currentUser.id);
+    if (invoiceSales.length === 0) return;
+
+    const cartItems: CartItem[] = [];
+    const shopProducts = db.getProducts(currentUser.id);
+    for (const saleItem of invoiceSales) {
+      const prod = shopProducts.find(p => p.id === saleItem.product_id);
+      if (prod) {
+        cartItems.push({
+          product: prod,
+          quantity: saleItem.quantity,
+          sellingPrice: saleItem.sale_price
+        });
+      }
+    }
+
+    setCart(cartItems);
+    setCustomerName(invoiceSales[0].customer_name || '');
+    setCustomerMobile(invoiceSales[0].customer_mobile || '');
+    setCustomerAddress(invoiceSales[0].customer_address || '');
+    setSaleDate(invoiceSales[0].sale_date.substring(0, 10));
+    setEditingInvoiceNumber(invoiceNumber);
+    
+    // Switch to active cart tab
+    setActiveRightTab('cart');
+  };
+
+  // Cart Calculations (Exclusive of GST)
   const cartTotals = useMemo(() => {
+    // Subtotal represents the base price total excluding GST
     const subtotal = cart.reduce((acc, item) => acc + (item.quantity * item.sellingPrice), 0);
     
-    // CGST & SGST Calculations (Based on inclusive prices)
+    // CGST & SGST Calculations (Based on exclusive prices)
     const totalGst = cart.reduce((acc, item) => {
-      const total = item.quantity * item.sellingPrice;
+      const baseTotal = item.quantity * item.sellingPrice;
       const gstRate = item.product.gst_rate || 0;
-      const base = total / (1 + gstRate / 100);
-      return acc + (total - base);
+      return acc + (baseTotal * (gstRate / 100));
     }, 0);
 
     return {
       subtotal,
       cgst: totalGst / 2,
       sgst: totalGst / 2,
-      grandTotal: subtotal
+      grandTotal: subtotal + totalGst
     };
   }, [cart]);
 
@@ -340,8 +381,9 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
                   type="text"
                   disabled={isExpired}
                   placeholder="98765xxxxx"
+                  maxLength={10}
                   value={customerMobile}
-                  onChange={(e) => setCustomerMobile(e.target.value)}
+                  onChange={(e) => setCustomerMobile(e.target.value.replace(/\D/g, '').slice(0, 10))}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors"
                 />
               </div>
@@ -563,7 +605,32 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
 
           {/* ACTIVE CART VIEW */}
           {activeRightTab === 'cart' && (
-            <div className="flex-1 flex flex-col">
+            <div className="flex-1 flex flex-col space-y-4">
+              {editingInvoiceNumber && (
+                <div className="bg-amber-50 border border-amber-250 p-3.5 rounded-xl flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-amber-100 text-amber-700 rounded-lg shrink-0">
+                      <Edit3 className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="text-amber-800 font-bold text-xs uppercase leading-none">Editing Bill Mode</p>
+                      <p className="text-amber-600 text-[10px] font-semibold mt-1">{editingInvoiceNumber}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setEditingInvoiceNumber(null);
+                      setCart([]);
+                      setCustomerName('');
+                      setCustomerMobile('');
+                      setCustomerAddress('');
+                    }}
+                    className="text-[10px] font-bold text-amber-700 bg-white border border-amber-200 px-2.5 py-1.5 rounded-lg hover:bg-amber-100 transition-colors shadow-sm"
+                  >
+                    Cancel Edit / કેન્સલ
+                  </button>
+                </div>
+              )}
               {cart.length === 0 ? (
                 <div className="flex-1 flex flex-col items-center justify-center text-slate-400 text-center py-12">
                   <ShoppingCart className="w-12 h-12 text-slate-200 stroke-1 mb-2 animate-bounce" />
@@ -595,7 +662,7 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
                             <td className="px-3 py-2.5 text-right text-slate-500">₹{item.sellingPrice.toFixed(2)}</td>
                             <td className="px-3 py-2.5 text-right font-bold text-slate-400">{item.product.gst_rate || 0}%</td>
                             <td className="px-3 py-2.5 text-right font-bold text-slate-800">
-                              ₹{(item.quantity * item.sellingPrice).toFixed(2)}
+                              ₹{(item.quantity * item.sellingPrice * (1 + (item.product.gst_rate || 0) / 100)).toFixed(2)}
                             </td>
                             <td className="px-3 py-2.5 text-center">
                               <button
@@ -695,7 +762,7 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
                         <td className="px-3 py-3 text-right font-bold text-emerald-600">
                           ₹{(s.quantity * s.sale_price).toFixed(2)}
                         </td>
-                        <td className="px-3 py-3 text-center">
+                        <td className="px-3 py-3 text-center whitespace-nowrap">
                           <button
                             onClick={() => handleOpenPastInvoice(s)}
                             className="p-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg border border-emerald-100 transition-colors inline-flex items-center gap-0.5 text-[9px] font-bold"
@@ -703,6 +770,16 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
                             <Receipt className="w-3 h-3" />
                             <span>View</span>
                           </button>
+                          
+                          {!isExpired && (
+                            <button
+                              onClick={() => handleStartEditInvoice(s.invoice_number)}
+                              className="p-1 bg-amber-50 text-amber-600 hover:bg-amber-100 rounded-lg border border-amber-100 transition-colors inline-flex items-center gap-0.5 text-[9px] font-bold ml-1"
+                            >
+                              <Edit3 className="w-3 h-3" />
+                              <span>Edit</span>
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))

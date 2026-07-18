@@ -119,11 +119,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode, curren
     setFormError('');
 
     if (!formName.trim()) {
-      setFormError(langMode === 'gu' ? 'કૃપા કરીને ઉત્પાદનનું નામ દાખલ કરો' : 'Please enter English product name');
-      return;
-    }
-    if (!formNameGu.trim()) {
-      setFormError(langMode === 'gu' ? 'કૃપા કરીને ગુજરાતી નામ દાખલ કરો' : 'Please enter Gujarati product name');
+      setFormError(langMode === 'gu' ? 'કૃપા કરીને ઉત્પાદનનું નામ દાખલ કરો' : 'Please enter product name');
       return;
     }
     
@@ -158,7 +154,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode, curren
       id: editingProduct ? editingProduct.id : `prod-${Date.now()}`,
       shop_id: currentUser.id,
       product_name: formName.trim(),
-      product_name_gu: formNameGu.trim(),
+      product_name_gu: formNameGu.trim() || formName.trim(),
       category: formCategory,
       brand: formBrand.trim() || 'Generic / સામાન્ય',
       purchase_price: purchase,
@@ -619,10 +615,11 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode, curren
                 </div>
 
                 <div className="col-span-2 space-y-1">
-                  <label className="text-xs font-bold text-slate-500 uppercase">ઉત્પાદન નામ (ગુજરાતી)</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase">Product Name (Gujarati - Optional) / ઉત્પાદન નામ (વૈકલ્પિક)</label>
                   <input
                     type="text"
                     value={formNameGu}
+                    placeholder="Optional / વૈકલ્પિક"
                     onChange={(e) => setFormNameGu(e.target.value)}
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500"
                   />

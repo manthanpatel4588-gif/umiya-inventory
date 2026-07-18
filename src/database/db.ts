@@ -600,6 +600,54 @@ export const db = {
     return newSale;
   },
 
+  deleteInvoiceSales: (invoiceNumber: string, shop_id: string) => {
+    initializeDB();
+    const allSales: Sale[] = JSON.parse(localStorage.getItem(KEYS.SALES) || '[]');
+    const shopProducts = db.getProducts(shop_id);
+
+    // 1. Revert stock levels first for each sale item in this invoice
+    const invoiceSales = allSales.filter(s => s.invoice_number === invoiceNumber && s.shop_id === shop_id);
+    invoiceSales.forEach(sale => {
+      const prod = shopProducts.find(p => p.id === sale.product_id);
+      if (prod) {
+        prod.stock_quantity += sale.quantity; // Put the stock back
+        // bypass audit log flood by editing array directly and saving below
+      }
+    });
+    
+    // Save updated products list to localStorage
+    const allProducts: Product[] = JSON.parse(localStorage.getItem(KEYS.PRODUCTS) || '[]');
+    invoiceSales.forEach(sale => {
+      const pIdx = allProducts.findIndex(p => p.id === sale.product_id && p.shop_id === shop_id);
+      if (pIdx > -1) {
+        const prod = shopProducts.find(p => p.id === sale.product_id);
+        if (prod) {
+          allProducts[pIdx].stock_quantity = prod.stock_quantity;
+          // Sync each product stock update to Supabase
+          if (supabase) {
+            supabase.from('products').upsert(allProducts[pIdx]).then(({ error }) => {
+              if (error) console.error('Supabase saveProduct stock-revert error:', error);
+            });
+          }
+        }
+      }
+    });
+    localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(allProducts));
+
+    // 2. Remove the sales from local storage
+    const remainingSales = allSales.filter(s => !(s.invoice_number === invoiceNumber && s.shop_id === shop_id));
+    localStorage.setItem(KEYS.SALES, JSON.stringify(remainingSales));
+
+    // 3. Delete from Supabase
+    if (supabase) {
+      supabase.from('sales').delete().eq('invoice_number', invoiceNumber).eq('shop_id', shop_id).then(({ error }) => {
+        if (error) console.error('Supabase deleteInvoiceSales error:', error);
+      });
+    }
+
+    db.addAuditLog(shop_id, `Invoice Reverted/Deleted: ${invoiceNumber}`, shop_id);
+  },
+
   // Supabase connection config
   getSupabaseConfig: () => {
     const config = localStorage.getItem(KEYS.SUPABASE_CONFIG);

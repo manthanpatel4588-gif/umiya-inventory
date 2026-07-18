@@ -37,7 +37,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
     { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }
   );
 
-  // 4. Calculate Cart Totals & GST breakouts
+  // 4. Calculate Cart Totals & GST breakouts (Exclusive GST)
   const invoiceTotals = useMemo(() => {
     let grandTotal = 0;
     let totalTax = 0;
@@ -49,10 +49,10 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
       const unit = prod?.unit || 'units';
       const gstRate = prod?.gst_rate || 0;
       
-      const total = item.quantity * item.sale_price;
-      const base = total / (1 + gstRate / 100);
-      const tax = total - base;
-      const singleBase = item.sale_price / (1 + gstRate / 100);
+      const singleBase = item.sale_price; // Selling price is exclusive of GST
+      const baseTotal = item.quantity * singleBase;
+      const tax = baseTotal * (gstRate / 100);
+      const total = baseTotal + tax;
 
       grandTotal += total;
       totalTax += tax;
