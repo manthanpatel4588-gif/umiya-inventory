@@ -80,6 +80,8 @@ export interface Sale {
   sale_price: number;
   profit: number;
   customer_name?: string;
+  customer_mobile?: string;
+  customer_address?: string;
   invoice_number: string;
 }
 

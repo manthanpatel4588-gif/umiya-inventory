@@ -4,8 +4,8 @@ import { createClient } from '@supabase/supabase-js';
 const getSupabaseConfig = () => {
   // 1. Read from build-time environment variables (e.g. Vercel dashboard variables)
   // This automatically connects all devices out-of-the-box!
-  const envUrl = import.meta.env.VITE_SUPABASE_URL;
-  const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const envUrl = import.meta.env.VITE_SUPABASE_URL || 'https://cozetnqfntnsjjwwvkal.supabase.co';
+  const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
   
   if (envUrl && envKey) {
     return { url: envUrl, key: envKey };
@@ -13,7 +13,12 @@ const getSupabaseConfig = () => {
 
   // 2. Fallback to device-specific LocalStorage configuration
   const config = localStorage.getItem('umiya_supabase_config');
-  return config ? JSON.parse(config) : { url: '', key: '' };
+  const saved = config ? JSON.parse(config) : { url: envUrl, key: envKey };
+  
+  return {
+    url: saved.url || envUrl,
+    key: saved.key || envKey || ''
+  };
 };
 
 const config = getSupabaseConfig();

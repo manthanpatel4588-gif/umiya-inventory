@@ -14,7 +14,9 @@ import {
   Trash2,
   Lock,
   Plus,
-  History
+  History,
+  Phone,
+  MapPin
 } from 'lucide-react';
 import { Product, Sale, db, User as UserType } from '../database/db';
 import { LanguageMode, t } from '../utils/translations';
@@ -44,6 +46,8 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
   // Form Input States
   const [saleDate, setSaleDate] = useState(() => new Date().toISOString().substring(0, 10));
   const [customerName, setCustomerName] = useState('');
+  const [customerMobile, setCustomerMobile] = useState('');
+  const [customerAddress, setCustomerAddress] = useState('');
   const [selectedProductId, setSelectedProductId] = useState('');
   const [quantity, setQuantity] = useState('');
   const [sellingPrice, setSellingPrice] = useState('');
@@ -174,6 +178,8 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
           quantity: item.quantity,
           sale_price: item.sellingPrice,
           customer_name: customerName.trim() || undefined,
+          customer_mobile: customerMobile.trim() || undefined,
+          customer_address: customerAddress.trim() || undefined,
           invoice_number: invNumber
         };
 
@@ -186,6 +192,8 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
       // 3. Clear cart and inputs
       setCart([]);
       setCustomerName('');
+      setCustomerMobile('');
+      setCustomerAddress('');
       
       // Refresh database lists
       setProducts(db.getProducts(currentUser.id));
@@ -319,6 +327,39 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
                 onChange={(e) => setCustomerName(e.target.value)}
                 className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors"
               />
+            </div>
+
+            {/* Customer Mobile & Address */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
+                  <Phone className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Mobile / મોબાઇલ</span>
+                </label>
+                <input
+                  type="text"
+                  disabled={isExpired}
+                  placeholder="98765xxxxx"
+                  value={customerMobile}
+                  onChange={(e) => setCustomerMobile(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
+                  <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Address / સરનામું</span>
+                </label>
+                <input
+                  type="text"
+                  disabled={isExpired}
+                  placeholder="City, Gujarat"
+                  value={customerAddress}
+                  onChange={(e) => setCustomerAddress(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors"
+                />
+              </div>
             </div>
 
             {/* Searchable Product Dropdown */}
