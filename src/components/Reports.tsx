@@ -251,6 +251,72 @@ export const Reports: React.FC<ReportsProps> = ({ langMode, currentUser }) => {
     document.body.removeChild(printRoot);
   };
 
+  // Export Customer Contacts list
+  const handleExportCustomerContacts = () => {
+    const customersMap: Record<string, { name: string; mobile: string; address: string; totalSpent: number; totalBills: number; invoiceNumbers: Set<string> }> = {};
+    
+    sales.forEach(sale => {
+      const mob = sale.customer_mobile ? sale.customer_mobile.trim() : '';
+      const nm = sale.customer_name ? sale.customer_name.trim() : '';
+      const key = mob || nm || 'Walk-in';
+      if (key === 'Walk-in' || (!mob && !nm)) return;
+
+      const prod = products.find(p => p.id === sale.product_id);
+      const gstRate = prod?.gst_rate || 0;
+      const base = sale.quantity * sale.sale_price;
+      const totalAmt = base + (base * (gstRate / 100));
+
+      if (!customersMap[key]) {
+        customersMap[key] = {
+          name: sale.customer_name || 'Customer',
+          mobile: sale.customer_mobile || '',
+          address: sale.customer_address || 'Not Provided',
+          totalSpent: 0,
+          totalBills: 0,
+          invoiceNumbers: new Set()
+        };
+      }
+
+      if (sale.product_name !== 'Udhaar Payment Settle / ઉધાર જમા') {
+        customersMap[key].totalSpent += totalAmt;
+      }
+      customersMap[key].invoiceNumbers.add(sale.invoice_number);
+    });
+
+    const uniqueCustomers = Object.values(customersMap).map(c => ({
+      ...c,
+      totalBills: c.invoiceNumbers.size
+    }));
+
+    if (uniqueCustomers.length === 0) {
+      alert(langMode === 'gu' ? 'નિકાસ કરવા માટે કોઈ ગ્રાહક રેકોર્ડ નથી!' : 'No customer records available to export!');
+      return;
+    }
+
+    const headers = ['Customer Name', 'Mobile Number', 'Address', 'Total Purchases (INR)', 'Total Invoices Count'];
+    const rows = uniqueCustomers.map(c => [
+      c.name,
+      c.mobile,
+      c.address,
+      c.totalSpent.toFixed(2),
+      c.totalBills.toString()
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(r => r.map(val => `"${String(val).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Customer_Contacts_${currentUser.shop_name.replace(/\s+/g, '_')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Header Title */}
@@ -273,6 +339,15 @@ export const Reports: React.FC<ReportsProps> = ({ langMode, currentUser }) => {
             <Printer className="w-4 h-4" />
             <span>{t('print', langMode)}</span>
           </button>
+          
+          <button 
+            onClick={handleExportCustomerContacts}
+            className="flex items-center gap-1.5 bg-blue-650 hover:bg-blue-750 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md"
+          >
+            <Download className="w-4 h-4" />
+            <span>Export Contacts (CSV) / ગ્રાહકો એક્સપોર્ટ</span>
+          </button>
+
           <button 
             onClick={handleExport}
             className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-md"

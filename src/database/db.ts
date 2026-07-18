@@ -84,6 +84,17 @@ export interface Sale {
   customer_mobile?: string;
   customer_address?: string;
   invoice_number: string;
+  payment_mode?: 'Cash' | 'UPI' | 'Udhaar';
+}
+
+export interface Expense {
+  id: string;
+  shop_id: string;
+  expense_date: string;
+  description: string;
+  category: string;
+  amount: number;
+  payment_mode: 'Cash' | 'UPI';
 }
 
 // LocalStorage Keys
@@ -94,6 +105,7 @@ const KEYS = {
   SUPPLIERS: 'umiya_suppliers',
   PURCHASES: 'umiya_purchases',
   SALES: 'umiya_sales',
+  EXPENSES: 'umiya_expenses',
   SUPABASE_CONFIG: 'umiya_supabase_config',
   SAAS_CONFIG: 'umiya_saas_config'
 };
@@ -328,6 +340,9 @@ export const initializeDB = () => {
   }
   if (!localStorage.getItem(KEYS.SALES)) {
     localStorage.setItem(KEYS.SALES, JSON.stringify(getSeedSales()));
+  }
+  if (!localStorage.getItem(KEYS.EXPENSES)) {
+    localStorage.setItem(KEYS.EXPENSES, JSON.stringify([]));
   }
   if (!localStorage.getItem(KEYS.AUDIT_LOGS)) {
     localStorage.setItem(KEYS.AUDIT_LOGS, JSON.stringify([
@@ -647,6 +662,59 @@ export const db = {
     }
 
     db.addAuditLog(shop_id, `Invoice Reverted/Deleted: ${invoiceNumber}`, shop_id);
+  },
+
+  // Expenses tracking API
+  getExpenses: (shop_id: string): Expense[] => {
+    initializeDB();
+    const allExpenses: Expense[] = JSON.parse(localStorage.getItem(KEYS.EXPENSES) || '[]');
+    return allExpenses.filter(e => e.shop_id === shop_id);
+  },
+
+  saveExpense: (expense: Expense, shop_id: string): Expense => {
+    initializeDB();
+    const allExpenses: Expense[] = JSON.parse(localStorage.getItem(KEYS.EXPENSES) || '[]');
+    
+    const targetExpense = {
+      ...expense,
+      id: expense.id || `expense-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      shop_id
+    };
+
+    const existingIdx = allExpenses.findIndex(e => e.id === targetExpense.id && e.shop_id === shop_id);
+    if (existingIdx > -1) {
+      allExpenses[existingIdx] = targetExpense;
+    } else {
+      allExpenses.unshift(targetExpense);
+    }
+
+    localStorage.setItem(KEYS.EXPENSES, JSON.stringify(allExpenses));
+
+    // Supabase Sync (Background)
+    if (supabase) {
+      supabase.from('expenses').upsert(targetExpense).then(({ error }) => {
+        if (error) console.error('Supabase saveExpense error:', error);
+      });
+    }
+
+    db.addAuditLog(shop_id, `Expense Saved: ${targetExpense.description} (Rs. ${targetExpense.amount})`, shop_id);
+    return targetExpense;
+  },
+
+  deleteExpense: (id: string, shop_id: string): void => {
+    initializeDB();
+    const allExpenses: Expense[] = JSON.parse(localStorage.getItem(KEYS.EXPENSES) || '[]');
+    const remaining = allExpenses.filter(e => !(e.id === id && e.shop_id === shop_id));
+    localStorage.setItem(KEYS.EXPENSES, JSON.stringify(remaining));
+
+    // Supabase Sync (Background)
+    if (supabase) {
+      supabase.from('expenses').delete().eq('id', id).eq('shop_id', shop_id).then(({ error }) => {
+        if (error) console.error('Supabase deleteExpense error:', error);
+      });
+    }
+
+    db.addAuditLog(shop_id, `Expense Deleted: ${id}`, shop_id);
   },
 
   // Supabase connection config

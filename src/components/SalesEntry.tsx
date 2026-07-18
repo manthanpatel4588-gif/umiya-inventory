@@ -49,6 +49,7 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
   const [customerName, setCustomerName] = useState('');
   const [customerMobile, setCustomerMobile] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
+  const [paymentMode, setPaymentMode] = useState<'Cash' | 'UPI' | 'Udhaar'>('Cash');
   const [selectedProductId, setSelectedProductId] = useState('');
   const [quantity, setQuantity] = useState('');
   const [sellingPrice, setSellingPrice] = useState('');
@@ -162,6 +163,16 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
       return;
     }
 
+    if (!customerName.trim()) {
+      setErrorMsg(langMode === 'gu' ? 'કૃપા કરીને ગ્રાહકનું નામ દાખલ કરો' : 'Customer Name is required / ગ્રાહકનું નામ જરૂરી છે');
+      return;
+    }
+
+    if (customerMobile.trim() && customerMobile.trim().length !== 10) {
+      setErrorMsg(langMode === 'gu' ? 'કૃપા કરીને ૧૦ અંકનો અમાન્ય મોબાઇલ નંબર દાખલ કરો' : 'Mobile number must be exactly 10 digits');
+      return;
+    }
+
     setErrorMsg('');
     setSuccessMsg('');
 
@@ -187,10 +198,11 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
           product_name: item.product.product_name,
           quantity: item.quantity,
           sale_price: item.sellingPrice,
-          customer_name: customerName.trim() || undefined,
+          customer_name: customerName.trim(),
           customer_mobile: customerMobile.trim() || undefined,
           customer_address: customerAddress.trim() || undefined,
-          invoice_number: invNumber
+          invoice_number: invNumber,
+          payment_mode: paymentMode
         };
 
         const recorded = db.addSale(payload, currentUser.id);
@@ -204,6 +216,7 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
       setCustomerName('');
       setCustomerMobile('');
       setCustomerAddress('');
+      setPaymentMode('Cash');
       setEditingInvoiceNumber(null);
       
       // Refresh database lists
@@ -248,6 +261,7 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
     setCustomerMobile(invoiceSales[0].customer_mobile || '');
     setCustomerAddress(invoiceSales[0].customer_address || '');
     setSaleDate(invoiceSales[0].sale_date.substring(0, 10));
+    setPaymentMode(invoiceSales[0].payment_mode || 'Cash');
     setEditingInvoiceNumber(invoiceNumber);
     
     // Switch to active cart tab
@@ -358,12 +372,12 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
             <div className="space-y-1">
               <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
                 <User className="w-3.5 h-3.5 text-slate-400" />
-                <span>{t('customerName', langMode)}</span>
+                <span>Customer Name * / ગ્રાહકનું નામ *</span>
               </label>
               <input
                 type="text"
                 disabled={isExpired}
-                placeholder={langMode === 'gu' ? 'ગ્રાહકનું નામ (વૈકલ્પિક)' : 'Customer Name (Optional)'}
+                placeholder={langMode === 'gu' ? 'કૃપા કરીને ગ્રાહકનું નામ દાખલ કરો' : 'Enter Customer Name (Required)'}
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
                 className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors"
@@ -401,6 +415,32 @@ export const SalesEntry: React.FC<SalesEntryProps> = ({ langMode, currentUser })
                   onChange={(e) => setCustomerAddress(e.target.value)}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-emerald-500 transition-colors"
                 />
+              </div>
+            </div>
+
+            {/* Payment Mode Selector */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
+                <Coins className="w-3.5 h-3.5 text-slate-400" />
+                <span>Payment Mode / ચુકવણી પદ્ધતિ</span>
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {(['Cash', 'UPI', 'Udhaar'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setPaymentMode(mode)}
+                    className={`py-2 px-3 border text-xs font-bold rounded-xl transition-all ${
+                      paymentMode === mode
+                        ? mode === 'Udhaar'
+                          ? 'bg-amber-500 border-amber-500 text-white shadow-sm'
+                          : 'bg-emerald-600 border-emerald-600 text-white shadow-sm'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    {mode === 'Cash' ? 'Cash / રોકડ' : mode === 'UPI' ? 'UPI / ઓનલાઇન' : 'Udhaar / ઉધાર'}
+                  </button>
+                ))}
               </div>
             </div>
 

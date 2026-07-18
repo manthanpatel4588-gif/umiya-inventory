@@ -14,6 +14,7 @@ import { Reports } from './components/Reports';
 import { ProfileSettings } from './components/ProfileSettings';
 import { Settings } from './components/Settings';
 import { CustomerDirectory } from './components/CustomerDirectory';
+import { ExpenseManager } from './components/ExpenseManager';
 import { LanguageMode } from './utils/translations';
 import { initializeDB, db, User } from './database/db';
 import { isSupabaseConfigured } from './database/supabase';
@@ -204,6 +205,8 @@ function App() {
         return <SupplierManager key={syncKey} langMode={langMode} currentUser={currentUser} />;
       case 'customers':
         return <CustomerDirectory key={syncKey} langMode={langMode} currentUser={currentUser} />;
+      case 'expenses':
+        return <ExpenseManager key={syncKey} langMode={langMode} currentUser={currentUser} />;
       case 'reports':
         return <Reports key={syncKey} langMode={langMode} currentUser={currentUser} />;
       case 'profile':

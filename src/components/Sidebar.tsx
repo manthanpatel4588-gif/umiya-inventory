@@ -12,7 +12,8 @@ import {
   LogOut,
   AlertTriangle,
   Menu,
-  X
+  X,
+  Coins
 } from 'lucide-react';
 import { LanguageMode, t } from '../utils/translations';
 import { getDatabaseMode } from '../database/supabase';
@@ -46,6 +47,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'suppliers', labelKey: 'suppliers', icon: Users },
     { id: 'customers', label: 'Customers / ગ્રાહકો', labelKey: 'customers', icon: Users },
     { id: 'reports', labelKey: 'reports', icon: BarChart3 },
+    { id: 'expenses', label: 'Expenses / ખર્ચ રજીસ્ટર', labelKey: 'expenses', icon: Coins },
     { id: 'profile', label: 'Shop Profile / પ્રોફાઇલ', labelKey: 'profile', icon: Store },
     { id: 'settings', labelKey: 'settings', icon: Settings },
   ];

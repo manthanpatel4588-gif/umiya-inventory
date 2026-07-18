@@ -8,7 +8,10 @@ import {
   Award, 
   ListOrdered,
   ArrowUpRight,
-  ArrowDownRight
+  ArrowDownRight,
+  Coins,
+  CreditCard,
+  Users
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -75,7 +78,38 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate, curr
       }
     });
 
-    // 6. Low stock products
+    // 6. Cash Flow Collection Breakdowns
+    let totalCashVal = 0;
+    let totalUpiVal = 0;
+    let totalUdhaarVal = 0;
+
+    sales.forEach(s => {
+      const prod = products.find(p => p.id === s.product_id);
+      const gstRate = prod?.gst_rate || 0;
+      const baseTotal = s.quantity * s.sale_price;
+      const gstAmt = baseTotal * (gstRate / 100);
+      const totalAmt = baseTotal + gstAmt;
+
+      if (s.product_name === 'Udhaar Payment Settle / ઉધાર જમા') {
+        if (s.payment_mode === 'UPI') {
+          totalUpiVal += totalAmt;
+        } else {
+          totalCashVal += totalAmt;
+        }
+        totalUdhaarVal -= totalAmt;
+      } else {
+        const mode = s.payment_mode || 'Cash';
+        if (mode === 'Cash') {
+          totalCashVal += totalAmt;
+        } else if (mode === 'UPI') {
+          totalUpiVal += totalAmt;
+        } else if (mode === 'Udhaar') {
+          totalUdhaarVal += totalAmt;
+        }
+      }
+    });
+
+    // 7. Low stock products
     const lowStockItems = products.filter(p => p.stock_quantity <= p.minimum_stock);
 
     return {
@@ -87,6 +121,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate, curr
       todayProfit: todayProfitVal,
       monthlySales: monthlySalesVal,
       monthlyProfit: monthlyProfitVal,
+      cashCollection: totalCashVal,
+      upiCollection: totalUpiVal,
+      udhaarOutstanding: Math.max(0, totalUdhaarVal),
       lowStockItems
     };
   }, [products, sales]);
@@ -202,6 +239,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate, curr
     }));
   }, [sales, products]);
 
+  // Chart Data: Payment Mode Split
+  const paymentModeChartData = useMemo(() => {
+    return [
+      { name: langMode === 'gu' ? 'Cash / રોકડ' : 'Cash', value: stats.cashCollection, color: '#10b981' },
+      { name: langMode === 'gu' ? 'UPI / ઓનલાઇન' : 'UPI', value: stats.upiCollection, color: '#3b82f6' },
+      { name: langMode === 'gu' ? 'Udhaar / ઉધાર' : 'Udhaar', value: stats.udhaarOutstanding, color: '#f59e0b' }
+    ];
+  }, [stats, langMode]);
+
   const COLORS = ['#10b981', '#f97316', '#3b82f6', '#8b5cf6', '#ec4899', '#64748b'];
 
   return (
@@ -293,6 +339,42 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate, curr
           </div>
           <span className="p-2.5 rounded-xl bg-amber-50 text-amber-600 group-hover:scale-110 transition-transform">
             <DollarSign className="w-5 h-5" />
+          </span>
+        </div>
+      </div>
+
+      {/* Cash Flow Payment Breakdowns */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Cash Collection */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between group hover:border-emerald-100 transition-all">
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Cash Collection / રોકડ જમા</p>
+            <p className="text-xl font-black text-slate-800">₹{stats.cashCollection.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+          </div>
+          <span className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600">
+            <Coins className="w-5 h-5" />
+          </span>
+        </div>
+
+        {/* UPI Collection */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between group hover:border-blue-100 transition-all">
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">UPI Collection / ઓનલાઇન જમા</p>
+            <p className="text-xl font-black text-slate-800">₹{stats.upiCollection.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+          </div>
+          <span className="p-2.5 rounded-xl bg-blue-50 text-blue-600">
+            <CreditCard className="w-5 h-5" />
+          </span>
+        </div>
+
+        {/* Outstanding Udhaar */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between group hover:border-amber-100 transition-all">
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Outstanding Udhaar / કુલ ઉધાર</p>
+            <p className="text-xl font-black text-amber-600">₹{stats.udhaarOutstanding.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+          </div>
+          <span className="p-2.5 rounded-xl bg-amber-50 text-amber-600">
+            <Users className="w-5 h-5" />
           </span>
         </div>
       </div>
@@ -419,7 +501,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate, curr
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Second Charts Row: Monthly Profit & Payment Modes split */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Monthly Profit Chart */}
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
           <div className="flex items-center justify-between mb-4">
@@ -444,6 +527,51 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate, curr
           </div>
         </div>
 
+        {/* Payment Modes Split Chart */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-bold text-slate-700">
+              {langMode === 'gu' ? 'ચુકવણી પદ્ધતિ મુજબ વિભાજન' : 'Payment Mode Split / કલેક્શન વિભાજન'}
+            </h3>
+          </div>
+          <div className="h-64 relative flex items-center justify-center">
+            {stats.cashCollection === 0 && stats.upiCollection === 0 && stats.udhaarOutstanding === 0 ? (
+              <p className="text-xs text-slate-400 font-medium">No sales transactions recorded yet</p>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={paymentModeChartData}
+                    cx="50%"
+                    cy="45%"
+                    innerRadius={55}
+                    outerRadius={75}
+                    paddingAngle={3}
+                    dataKey="value"
+                  >
+                    {paymentModeChartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    formatter={(value) => [`₹${value}`, 'Amount']}
+                    contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0' }}
+                  />
+                  <Legend 
+                    verticalAlign="bottom" 
+                    iconType="circle"
+                    iconSize={8}
+                    wrapperStyle={{ fontSize: '11px', bottom: 5 }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Row 3: Lists Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top Selling Products */}
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
           <div className="flex items-center gap-2 mb-4 border-b border-slate-100 pb-3">
@@ -500,7 +628,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate, curr
                     <div className="min-w-0">
                       <p className="text-xs font-bold text-slate-700 line-clamp-1">{tx.description}</p>
                       <p className="text-[10px] text-slate-400 truncate mt-0.5">{tx.party}</p>
-                      <p className="text-[9px] text-slate-305 font-medium">
+                      <p className="text-[9px] text-slate-300 font-medium">
                         {new Date(tx.date).toLocaleDateString(langMode === 'gu' ? 'gu-IN' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>

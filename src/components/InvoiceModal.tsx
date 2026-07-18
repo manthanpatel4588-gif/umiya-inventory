@@ -155,7 +155,7 @@ Thank you for your business!
     doc.setFont('Helvetica', 'bold');
     doc.setFontSize(11);
     doc.text(`Invoice No: ${sale.invoice_number}`, 15, headerY);
-    doc.text(`Customer Details / ગ્રાહક:`, 120, headerY);
+    doc.text(`Customer Details:`, 120, headerY);
     headerY += 5;
     
     doc.setFont('Helvetica', 'normal');
@@ -171,6 +171,10 @@ Thank you for your business!
       doc.text(`Address: ${sale.customer_address}`, 120, headerY);
       headerY += 5;
     }
+    if (sale.payment_mode) {
+      doc.text(`Payment Mode: ${sale.payment_mode}`, 15, headerY);
+      headerY += 5;
+    }
     headerY += 5;
 
     // Draw line
@@ -179,7 +183,7 @@ Thank you for your business!
 
     // Table columns
     doc.setFont('Helvetica', 'bold');
-    doc.text('Item Details / વિગત', 15, headerY);
+    doc.text('Item Details', 15, headerY);
     doc.text('Qty', 85, headerY, { align: 'center' });
     doc.text('Rate (Ex. GST)', 115, headerY, { align: 'right' });
     doc.text('GST Rate', 145, headerY, { align: 'center' });
@@ -191,7 +195,9 @@ Thank you for your business!
     // Table rows
     doc.setFont('Helvetica', 'normal');
     invoiceTotals.items.forEach(item => {
-      doc.text(item.product_name, 15, headerY);
+      // Clean product name to remove non-ascii characters
+      const cleanProdName = item.product_name.replace(/[^\x00-\x7F]/g, '');
+      doc.text(cleanProdName || item.product_name, 15, headerY);
       doc.text(`${item.quantity} ${item.unit}`, 85, headerY, { align: 'center' });
       doc.text(`Rs. ${item.singleBase.toFixed(2)}`, 115, headerY, { align: 'right' });
       doc.text(`${item.gstRate}%`, 145, headerY, { align: 'center' });
@@ -214,14 +220,14 @@ Thank you for your business!
 
     doc.setFont('Helvetica', 'bold');
     doc.setFontSize(12);
-    doc.text('Grand Total / કુલ રકમ:', 120, headerY);
+    doc.text('Grand Total:', 120, headerY);
     doc.text(`Rs. ${invoiceTotals.grandTotal.toFixed(2)}`, 195, headerY, { align: 'right' });
     headerY += 15;
 
     // Terms & footer
     doc.setFont('Helvetica', 'normal');
     doc.setFontSize(9);
-    doc.text('Thank you for your business! / પધારવા બદલ આભાર!', 105, headerY, { align: 'center' });
+    doc.text('Thank you for your business!', 105, headerY, { align: 'center' });
     headerY += 4;
     doc.text('Subject to local jurisdiction. Goods once sold will not be returned.', 105, headerY, { align: 'center' });
     headerY += 4;
@@ -304,10 +310,17 @@ Hello! We have shared your Invoice Bill. Please attach and send the downloaded P
         </div>
 
         {/* PRINT CONTAINER (Grouped multi-item receipt) */}
-        <div id="printable-invoice-content" className="p-6 space-y-5 max-h-[70vh] overflow-y-auto print:max-h-none print:overflow-visible">
+        <div id="printable-invoice-content" className="p-6 space-y-5 max-h-[70vh] overflow-y-auto print:max-h-none print:overflow-visible relative">
           
+          {/* Print-safe Watermark Logo */}
+          <img 
+            src="/codivra_logo.png" 
+            alt="Watermark Logo" 
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4/5 opacity-[0.03] pointer-events-none select-none z-0" 
+          />
+
           {/* Invoice Header */}
-          <div className="text-center space-y-1 pb-4 border-b border-dashed border-slate-200">
+          <div className="text-center space-y-1 pb-4 border-b border-dashed border-slate-200 relative z-10">
             {shopProfile?.logo_url && (
               <img src={shopProfile.logo_url} alt="Logo" className="w-12 h-12 rounded object-cover mx-auto mb-2 border shadow-sm" />
             )}
@@ -326,10 +339,22 @@ Hello! We have shared your Invoice Bill. Please attach and send the downloaded P
           </div>
 
           {/* Invoice Metadata */}
-          <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-650 leading-relaxed border-b border-slate-100 pb-3">
+          <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-650 leading-relaxed border-b border-slate-100 pb-3 relative z-10">
             <div className="space-y-0.5">
               <p><span className="font-bold text-slate-450">Invoice No:</span> <span className="font-bold text-slate-800">{sale.invoice_number}</span></p>
               <p><span className="font-bold text-slate-450">Date/Time:</span> <span className="font-semibold text-slate-850">{formattedDate}</span></p>
+              {sale.payment_mode && (
+                <p className="flex items-center gap-1.5 mt-1">
+                  <span className="font-bold text-slate-450">Payment:</span>
+                  <span className={`px-1.5 py-0.5 rounded-[4px] text-[8px] font-extrabold uppercase leading-none tracking-wider ${
+                    sale.payment_mode === 'Udhaar'
+                      ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                      : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                  }`}>
+                    {sale.payment_mode === 'Cash' ? 'Cash / રોકડ' : sale.payment_mode === 'UPI' ? 'UPI / ઓનલાઇન' : 'Udhaar / ઉધાર'}
+                  </span>
+                </p>
+              )}
             </div>
             <div className="text-right space-y-0.5">
               <p><span className="font-bold text-slate-450">Customer / ગ્રાહક:</span></p>
@@ -340,7 +365,7 @@ Hello! We have shared your Invoice Bill. Please attach and send the downloaded P
           </div>
 
           {/* Invoice Items Table */}
-          <table className="w-full text-[11px] border-collapse">
+          <table className="w-full text-[11px] border-collapse relative z-10">
             <thead>
               <tr className="border-b-2 border-slate-800 font-bold text-slate-700 bg-slate-50/50 text-[9px] uppercase tracking-wide">
                 <th className="py-2 text-left">Item Details / વિગત</th>
@@ -407,17 +432,8 @@ Hello! We have shared your Invoice Bill. Please attach and send the downloaded P
           
           <button
             type="button"
-            onClick={handleWhatsAppShare}
-            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-semibold rounded-xl transition-all shadow-md shadow-emerald-100"
-          >
-            <Share2 className="w-3.5 h-3.5" />
-            <span>WhatsApp / વોટ્સએપ</span>
-          </button>
-
-          <button
-            type="button"
             onClick={handleWhatsAppPDFShare}
-            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-750 hover:bg-emerald-850 text-white text-xs font-semibold rounded-xl transition-all shadow-md shadow-emerald-200"
+            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold rounded-xl transition-all shadow-md shadow-emerald-200"
           >
             <Share2 className="w-3.5 h-3.5" />
             <span>WhatsApp PDF / વોટ્સએપ PDF</span>
