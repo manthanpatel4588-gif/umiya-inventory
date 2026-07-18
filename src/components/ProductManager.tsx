@@ -38,7 +38,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode, curren
   // Form State
   const [formName, setFormName] = useState('');
   const [formNameGu, setFormNameGu] = useState('');
-  const [formCategory, setFormCategory] = useState('General FMCG');
+  const [formCategory, setFormCategory] = useState('');
   const [formBrand, setFormBrand] = useState('');
   const [formPurchasePrice, setFormPurchasePrice] = useState('');
   const [formSellingPrice, setFormSellingPrice] = useState('');
@@ -82,7 +82,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode, curren
     setEditingProduct(null);
     setFormName('');
     setFormNameGu('');
-    setFormCategory('General FMCG');
+    setFormCategory('');
     setFormBrand('');
     setFormPurchasePrice('');
     setFormSellingPrice('');
@@ -155,7 +155,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode, curren
       shop_id: currentUser.id,
       product_name: formName.trim(),
       product_name_gu: formNameGu.trim() || formName.trim(),
-      category: formCategory,
+      category: formCategory.trim() || 'General',
       brand: formBrand.trim() || 'Generic / સામાન્ય',
       purchase_price: purchase,
       selling_price: selling,
@@ -335,7 +335,7 @@ export const ProductManager: React.FC<ProductManagerProps> = ({ langMode, curren
           product_name_gu: (columnMapping['product_name_gu'] !== undefined && columnMapping['product_name_gu'] > -1 
             ? row[columnMapping['product_name_gu']] : '') || nameVal.trim(),
           category: (columnMapping['category'] !== undefined && columnMapping['category'] > -1 
-            ? row[columnMapping['category']] : '') || 'General FMCG',
+            ? row[columnMapping['category']] : '') || 'General',
           brand: (columnMapping['brand'] !== undefined && columnMapping['brand'] > -1 
             ? row[columnMapping['brand']] : '') || 'Generic / સામાન્ય',
           purchase_price: isNaN(purchasePrice) ? 0 : purchasePrice,
