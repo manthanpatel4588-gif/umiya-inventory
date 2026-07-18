@@ -394,7 +394,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate, curr
         {/* Cash Collection */}
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between group hover:border-emerald-100 transition-all">
           <div className="space-y-1">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Cash Collection / રોકડ જમા</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              {langMode === 'en' ? 'Cash Collection' : langMode === 'gu' ? 'રોકડ જમા' : 'Cash Collection / રોકડ જમા'}
+            </p>
             <p className="text-xl font-black text-slate-800">₹{stats.cashCollection.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
           </div>
           <span className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600">
@@ -405,7 +407,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate, curr
         {/* UPI Collection */}
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between group hover:border-blue-100 transition-all">
           <div className="space-y-1">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">UPI Collection / ઓનલાઇન જમા</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              {langMode === 'en' ? 'UPI Collection' : langMode === 'gu' ? 'ઓનલાઇન જમા' : 'UPI Collection / ઓનલાઇન જમા'}
+            </p>
             <p className="text-xl font-black text-slate-800">₹{stats.upiCollection.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
           </div>
           <span className="p-2.5 rounded-xl bg-blue-50 text-blue-600">
@@ -416,7 +420,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate, curr
         {/* Outstanding Udhaar */}
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between group hover:border-amber-100 transition-all">
           <div className="space-y-1">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Outstanding Udhaar / કુલ ઉધાર</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              {langMode === 'en' ? 'Outstanding Udhaar' : langMode === 'gu' ? 'કુલ ઉધાર' : 'Outstanding Udhaar / કુલ ઉધાર'}
+            </p>
             <p className="text-xl font-black text-amber-600">₹{stats.udhaarOutstanding.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
           </div>
           <span className="p-2.5 rounded-xl bg-amber-50 text-amber-600">
@@ -430,7 +436,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate, curr
         {/* Today's Customers */}
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between group hover:border-indigo-100 transition-all">
           <div className="space-y-1">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Today's Customers / આજના ગ્રાહકો</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              {langMode === 'en' ? "Today's Customers" : langMode === 'gu' ? 'આજના ગ્રાહકો' : "Today's Customers / આજના ગ્રાહકો"}
+            </p>
             <p className="text-xl font-black text-slate-800">{stats.todayCustomers}</p>
           </div>
           <span className="p-2.5 rounded-xl bg-indigo-50 text-indigo-600">
@@ -441,7 +449,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate, curr
         {/* This Month's Customers */}
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between group hover:border-violet-100 transition-all">
           <div className="space-y-1">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">This Month's Customers / આ મહિનાના ગ્રાહકો</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              {langMode === 'en' ? "This Month's Customers" : langMode === 'gu' ? 'આ મહિનાના ગ્રાહકો' : "This Month's Customers / આ મહિનાના ગ્રાહકો"}
+            </p>
             <p className="text-xl font-black text-slate-800">{stats.thisMonthCustomers}</p>
           </div>
           <span className="p-2.5 rounded-xl bg-violet-50 text-violet-600">
@@ -452,7 +462,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate, curr
         {/* Total Registered Customers */}
         <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between group hover:border-sky-100 transition-all">
           <div className="space-y-1">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Customers / કુલ ગ્રાહકો</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              {langMode === 'en' ? 'Total Customers' : langMode === 'gu' ? 'કુલ ગ્રાહકો' : 'Total Customers / કુલ ગ્રાહકો'}
+            </p>
             <p className="text-xl font-black text-slate-800">{stats.totalCustomers}</p>
           </div>
           <span className="p-2.5 rounded-xl bg-sky-50 text-sky-600">
@@ -469,20 +481,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ langMode, onNavigate, curr
           </div>
           <div>
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              {langMode === 'gu' ? 'કુલ સ્ટોક મૂલ્યાંકન' : 'Total Stock Asset Valuation'}
+              {langMode === 'en' ? 'Total Stock Asset Valuation' : langMode === 'gu' ? 'કુલ સ્ટોક મૂલ્યાંકન' : 'Total Stock Asset Valuation / કુલ સ્ટોક મૂલ્યાંકન'}
             </p>
             <p className="text-sm text-slate-400">
-              {langMode === 'gu' ? 'ખરીદી કિંમત (ખર્ચ) અને વેચાણ કિંમત (બજાર કિંમત) અનુસાર સ્ટોકનું મૂલ્ય' : 'Valuation based on Purchase Price (Cost) vs Selling Price (Market Value)'}
+              {langMode === 'en' 
+                ? 'Valuation based on Purchase Price (Cost) vs Selling Price (Market Value)' 
+                : langMode === 'gu' 
+                ? 'ખરીદી કિંમત (ખર્ચ) અને વેચાણ કિંમત (બજાર કિંમત) અનુસાર સ્ટોકનું મૂલ્ય' 
+                : 'Valuation based on Purchase Price (Cost) vs Selling Price (Market Value) / ખરીદી અને વેચાણ કિંમત મુજબ સ્ટોકનું મૂલ્ય'}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-6 divide-x divide-slate-200">
           <div className="pl-0 text-center md:text-left">
-            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Cost Value (ખરીદી કિંમત)</span>
+            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+              {langMode === 'en' ? 'Cost Value' : langMode === 'gu' ? 'ખરીદી કિંમત' : 'Cost Value (ખરીદી કિંમત)'}
+            </span>
             <p className="text-lg font-bold text-slate-700">₹{stats.totalStockValueCost.toLocaleString()}</p>
           </div>
           <div className="pl-6 text-center md:text-left">
-            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Market Value (વેચાણ કિંમત)</span>
+            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+              {langMode === 'en' ? 'Market Value' : langMode === 'gu' ? 'વેચાણ કિંમત' : 'Market Value (વેચાણ કિંમત)'}
+            </span>
             <p className="text-lg font-bold text-emerald-600">₹{stats.totalStockValueRetail.toLocaleString()}</p>
           </div>
         </div>

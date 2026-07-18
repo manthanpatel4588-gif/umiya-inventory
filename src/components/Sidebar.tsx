@@ -45,10 +45,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'purchases', labelKey: 'purchases', icon: PlusCircle },
     { id: 'sales', labelKey: 'sales', icon: ShoppingCart },
     { id: 'suppliers', labelKey: 'suppliers', icon: Users },
-    { id: 'customers', label: 'Customers / ગ્રાહકો', labelKey: 'customers', icon: Users },
+    { id: 'customers', labelKey: 'customers', icon: Users },
     { id: 'reports', labelKey: 'reports', icon: BarChart3 },
-    { id: 'expenses', label: 'Expenses / ખર્ચ રજીસ્ટર', labelKey: 'expenses', icon: Coins },
-    { id: 'profile', label: 'Shop Profile / પ્રોફાઇલ', labelKey: 'profile', icon: Store },
+    { id: 'expenses', labelKey: 'expenses', icon: Coins },
+    { id: 'profile', labelKey: 'profile', icon: Store },
     { id: 'settings', labelKey: 'settings', icon: Settings },
   ];
 
@@ -122,7 +122,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               >
                 <Icon className={`w-4 h-4 shrink-0 transition-colors ${isActive ? 'text-emerald-600' : 'text-slate-400'}`} />
                 <span className="truncate">
-                  {item.label || t(item.labelKey || '', langMode)}
+                  {t(item.labelKey || '', langMode)}
                 </span>
               </button>
             );
@@ -137,7 +137,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 hover:text-red-700 font-bold text-[11px] rounded-xl transition-all shadow-sm"
           >
             <LogOut className="w-3.5 h-3.5" />
-            <span>Logout / લોગઆઉટ</span>
+            <span>{t('logout', langMode)}</span>
           </button>
         </div>
       </aside>
@@ -263,7 +263,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   >
                     <Icon className={`w-5 h-5 mb-1.5 ${isActive ? 'text-emerald-600' : 'text-slate-400'}`} />
                     <span className="text-xs font-bold truncate w-full">
-                      {item.label || t(item.labelKey || '', langMode)}
+                      {t(item.labelKey || '', langMode)}
                     </span>
                   </button>
                 );
@@ -280,7 +280,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className="w-full flex items-center justify-center gap-2 py-3 bg-red-50 hover:bg-red-100 border border-red-200 text-red-650 hover:text-red-750 font-bold text-xs rounded-2xl transition-all shadow-sm"
               >
                 <LogOut className="w-4 h-4" />
-                <span>Logout / લોગઆઉટ</span>
+                <span>{t('logout', langMode)}</span>
               </button>
             </div>
 

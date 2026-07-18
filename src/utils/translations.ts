@@ -14,8 +14,12 @@ export const translations: Record<string, TranslationItem> = {
   purchases: { en: 'Purchase Entry', gu: 'ખરીદી નોંધણી' },
   sales: { en: 'Sales Entry', gu: 'વેચાણ નોંધણી' },
   suppliers: { en: 'Supplier Management', gu: 'વિક્રેતા વ્યવસ્થાપન' },
+  customers: { en: 'Customer Directory', gu: 'ગ્રાહક ડાયરેક્ટરી' },
   reports: { en: 'Reports & Analytics', gu: 'અહેવાલો અને વિશ્લેષણ' },
+  expenses: { en: 'Expense Manager', gu: 'દુકાન ખર્ચ રજીસ્ટર' },
+  profile: { en: 'Shop Profile', gu: 'દુકાન પ્રોફાઇલ' },
   settings: { en: 'Database Settings', gu: 'ડેટાબેઝ સેટિંગ્સ' },
+  logout: { en: 'Logout', gu: 'લોગઆઉટ' },
   
   // Dashboard metrics
   totalProducts: { en: 'Total Products', gu: 'કુલ ઉત્પાદનો' },
